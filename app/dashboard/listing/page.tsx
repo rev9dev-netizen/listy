@@ -17,8 +17,9 @@ export default function ListingBuilderPage() {
   return (
     <div className="space-y-6">
       <ListingHeader />
-      <div className="grid gap-3 lg:grid-cols-[480px_1fr] h-[calc(100vh-200px)]">
-        <div className="flex flex-col h-full overflow-hidden">
+      <div className="grid gap-3 lg:grid-cols-[480px_1fr] h-[calc(100vh-180px)]">
+        {/* Left pane */}
+        <div className="flex flex-col h-full min-h-0">
           <div className="flex-1 overflow-y-auto space-y-4 pr-2">
             <KeywordBank
               open={builder.keywordBankOpen}
@@ -75,7 +76,9 @@ export default function ListingBuilderPage() {
             )}
           </div>
         </div>
-        <div className="space-y-6">
+        {/* Right pane */}
+        <div className="flex flex-col h-full min-h-0">
+          <div className="flex-1 overflow-y-auto space-y-6 pr-2">
           <AIParameters
             open={builder.parametersOpen}
             onOpenChange={builder.setParametersOpen}
@@ -140,6 +143,7 @@ export default function ListingBuilderPage() {
             }
             generating={builder.generateContentMutation.isPending}
           />
+          </div>
         </div>
       </div>
       <AddKeywordsDialog
