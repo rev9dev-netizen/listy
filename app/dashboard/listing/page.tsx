@@ -79,70 +79,70 @@ export default function ListingBuilderPage() {
         {/* Right pane */}
         <div className="flex flex-col h-full min-h-0">
           <div className="flex-1 overflow-y-auto space-y-6 pr-2">
-          <AIParameters
-            open={builder.parametersOpen}
-            onOpenChange={builder.setParametersOpen}
-            params={builder.params}
-            setParams={builder.setParams}
-          />
-          <TitleEditor
-            value={builder.content.title}
-            onChange={(v) => builder.setContent((c) => ({ ...c, title: v }))}
-            limit={builder.limits.titleLimit}
-            keywordsUsed={
-              builder.keywords.filter(
-                (k) =>
-                  k.selected &&
-                  builder.content.title
-                    .toLowerCase()
-                    .includes(k.phrase.toLowerCase())
-              ).length
-            }
-            canGenerate={builder.canGenerate}
-            generate={() =>
-              builder.generateContentMutation.mutate({ section: "title" })
-            }
-            generating={builder.generateContentMutation.isPending}
-          />
-          <BulletsEditor
-            bullets={[
-              builder.content.bullet1,
-              builder.content.bullet2,
-              builder.content.bullet3,
-              builder.content.bullet4,
-              builder.content.bullet5,
-            ]}
-            onChange={(i, v) =>
-              builder.setContent((c) => ({
-                ...c,
-                bullet1: i === 0 ? v : c.bullet1,
-                bullet2: i === 1 ? v : c.bullet2,
-                bullet3: i === 2 ? v : c.bullet3,
-                bullet4: i === 3 ? v : c.bullet4,
-                bullet5: i === 4 ? v : c.bullet5,
-              }))
-            }
-            limit={builder.limits.bulletLimit}
-            canGenerate={builder.canGenerate}
-            generate={() =>
-              builder.generateContentMutation.mutate({ section: "bullets" })
-            }
-            generating={builder.generateContentMutation.isPending}
-          />
-          <DescriptionEditor
-            value={builder.content.description}
-            onChange={(v) =>
-              builder.setContent((c) => ({ ...c, description: v }))
-            }
-            limit={builder.limits.descLimit}
-            canGenerate={builder.canGenerate}
-            generate={() =>
-              builder.generateContentMutation.mutate({
-                section: "description",
-              })
-            }
-            generating={builder.generateContentMutation.isPending}
-          />
+            <AIParameters
+              open={builder.parametersOpen}
+              onOpenChange={builder.setParametersOpen}
+              params={builder.params}
+              setParams={builder.setParams}
+            />
+            <TitleEditor
+              value={builder.content.title}
+              onChange={(v) => builder.setContent((c) => ({ ...c, title: v }))}
+              limit={builder.limits.titleLimit}
+              keywordsUsed={
+                builder.keywords.filter(
+                  (k) =>
+                    k.selected &&
+                    builder.content.title
+                      .toLowerCase()
+                      .includes(k.phrase.toLowerCase())
+                ).length
+              }
+              canGenerate={builder.canGenerate}
+              generate={() =>
+                builder.generateContentMutation.mutate({ section: "title" })
+              }
+              generating={builder.generateContentMutation.isPending}
+            />
+            <BulletsEditor
+              bullets={[
+                builder.content.bullet1,
+                builder.content.bullet2,
+                builder.content.bullet3,
+                builder.content.bullet4,
+                builder.content.bullet5,
+              ]}
+              onChange={(i, v) =>
+                builder.setContent((c) => ({
+                  ...c,
+                  bullet1: i === 0 ? v : c.bullet1,
+                  bullet2: i === 1 ? v : c.bullet2,
+                  bullet3: i === 2 ? v : c.bullet3,
+                  bullet4: i === 3 ? v : c.bullet4,
+                  bullet5: i === 4 ? v : c.bullet5,
+                }))
+              }
+              limit={builder.limits.bulletLimit}
+              canGenerate={builder.canGenerate}
+              generate={() =>
+                builder.generateContentMutation.mutate({ section: "bullets" })
+              }
+              generating={builder.generateContentMutation.isPending}
+            />
+            <DescriptionEditor
+              value={builder.content.description}
+              onChange={(v) =>
+                builder.setContent((c) => ({ ...c, description: v }))
+              }
+              limit={builder.limits.descLimit}
+              canGenerate={builder.canGenerate}
+              generate={() =>
+                builder.generateContentMutation.mutate({
+                  section: "description",
+                })
+              }
+              generating={builder.generateContentMutation.isPending}
+            />
           </div>
         </div>
       </div>
