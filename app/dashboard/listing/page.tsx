@@ -77,9 +77,11 @@ export default function ListingBuilderPage() {
   const [sortBy, setSortBy] = useState<"volume" | "sales" | "alpha">("volume");
   const [showUpload, setShowUpload] = useState(true);
   const [keywordBankOpen, setKeywordBankOpen] = useState(true);
+  const [rootKeywordsOpen, setRootKeywordsOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isUploading, setIsUploading] = useState(false);
   const [manualKeywordDialog, setManualKeywordDialog] = useState(false);
+  const [wordFilter, setWordFilter] = useState<"all" | "1" | "2" | "3+">("1");
   const keywordsPerPage = 20;
 
   // AI Parameters state (collapsible)
@@ -368,7 +370,21 @@ export default function ListingBuilderPage() {
     return "text-muted-foreground";
   };
 
-  const sortedKeywords = [...keywords].sort((a, b) => {
+  // Filter keywords by word count
+  const getWordCount = (phrase: string) => {
+    return phrase.trim().split(/\s+/).length;
+  };
+
+  const filteredKeywords = keywords.filter((kw) => {
+    if (wordFilter === "all") return true;
+    const wordCount = getWordCount(kw.phrase);
+    if (wordFilter === "1") return wordCount === 1;
+    if (wordFilter === "2") return wordCount === 2;
+    if (wordFilter === "3+") return wordCount >= 3;
+    return true;
+  });
+
+  const sortedKeywords = [...filteredKeywords].sort((a, b) => {
     if (sortBy === "volume") return b.searchVolume - a.searchVolume;
     if (sortBy === "sales") return b.sales - a.sales;
     return a.phrase.localeCompare(b.phrase);
@@ -629,18 +645,75 @@ export default function ListingBuilderPage() {
                       </div>
                     ) : keywords.length > 0 ? (
                       <>
-                        <div className="flex items-center justify-between pt-2">
-                          <span className="text-sm font-medium">
-                            {selectedCount} of {keywords.length} selected
-                          </span>
+                        <div className="space-y-3 pt-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">
+                              {selectedCount} of {keywords.length} selected
+                            </span>
+                          </div>
+
+                          {/* Insert Keywords Buttons */}
+                          {selectedCount > 0 && (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  generateContentMutation.mutate({
+                                    section: "title",
+                                  })
+                                }
+                                disabled={
+                                  generateContentMutation.isPending ||
+                                  !productCharacteristics.trim()
+                                }
+                                className="flex-1 text-xs"
+                              >
+                                + Product Title
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  generateContentMutation.mutate({
+                                    section: "bullets",
+                                  })
+                                }
+                                disabled={
+                                  generateContentMutation.isPending ||
+                                  !productCharacteristics.trim()
+                                }
+                                className="flex-1 text-xs"
+                              >
+                                + Bullet Points
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  generateContentMutation.mutate({
+                                    section: "description",
+                                  })
+                                }
+                                disabled={
+                                  generateContentMutation.isPending ||
+                                  !productCharacteristics.trim()
+                                }
+                                className="flex-1 text-xs"
+                              >
+                                + Description
+                              </Button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Keywords Table with sortable headers */}
                         <TooltipProvider>
                           <div className="border rounded-lg">
-                            <div className="grid grid-cols-[auto_1fr_55px_50px_45px] gap-2 p-2 border-b bg-muted/50 text-xs font-medium">
+                            <div className="grid grid-cols-[auto_1fr_40px_55px_50px_45px] gap-2 p-2 border-b bg-muted/50 text-xs font-medium">
                               <div></div>
                               <div>Keyword</div>
+                              <div className="text-right">Used</div>
                               <button
                                 onClick={() => {
                                   setSortBy(
@@ -671,14 +744,25 @@ export default function ListingBuilderPage() {
                               {paginatedKeywords.map((kw, index) => {
                                 const allText =
                                   `${title} ${bullet1} ${bullet2} ${bullet3} ${bullet4} ${bullet5} ${description}`.toLowerCase();
-                                const isUsed = allText.includes(
-                                  kw.phrase.toLowerCase()
+
+                                // Exact word matching using word boundaries
+                                const escapedPhrase = kw.phrase
+                                  .toLowerCase()
+                                  .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                                const regex = new RegExp(
+                                  `\\b${escapedPhrase}\\b`,
+                                  "g"
                                 );
+                                const matches = allText.match(regex);
+                                const keywordCount = matches
+                                  ? matches.length
+                                  : 0;
+                                const isUsed = keywordCount > 0;
 
                                 return (
                                   <div
                                     key={index}
-                                    className={`grid grid-cols-[auto_1fr_55px_50px_45px] gap-2 p-2 border-b text-xs hover:bg-muted/50 ${
+                                    className={`grid grid-cols-[auto_1fr_40px_55px_50px_45px] gap-2 p-2 border-b text-xs hover:bg-muted/50 ${
                                       isUsed
                                         ? "bg-green-50 dark:bg-green-950/30"
                                         : ""
@@ -696,9 +780,6 @@ export default function ListingBuilderPage() {
                                           <span className="truncate">
                                             {kw.phrase}
                                           </span>
-                                          {isUsed && (
-                                            <CheckCircle2Icon className="h-3 w-3 shrink-0 text-green-600" />
-                                          )}
                                         </div>
                                       </TooltipTrigger>
                                       <TooltipContent
@@ -708,6 +789,9 @@ export default function ListingBuilderPage() {
                                         <p>{kw.phrase}</p>
                                       </TooltipContent>
                                     </Tooltip>
+                                    <div className="text-right text-muted-foreground">
+                                      {keywordCount > 0 ? keywordCount : ""}
+                                    </div>
                                     <div className="text-right text-muted-foreground">
                                       {kw.searchVolume > 0
                                         ? kw.searchVolume >= 1000
@@ -785,6 +869,131 @@ export default function ListingBuilderPage() {
                 </CollapsibleContent>
               </Card>
             </Collapsible>
+
+            {/* Root Keywords Section - Below Main Table */}
+            {keywords.length > 0 && (
+              <Collapsible
+                open={rootKeywordsOpen}
+                onOpenChange={setRootKeywordsOpen}
+              >
+                <Card>
+                  <CollapsibleTrigger className="w-full">
+                    <CardHeader className="cursor-pointer">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1 text-left">
+                          <CardTitle className="text-base">
+                            Root Keywords ({filteredKeywords.length})
+                          </CardTitle>
+                          <CardDescription>
+                            {rootKeywordsOpen
+                              ? "Sorted by phrase frequency"
+                              : `${
+                                  wordFilter === "1"
+                                    ? "1 word phrases"
+                                    : wordFilter === "2"
+                                    ? "2 word phrases"
+                                    : "3+ word phrases"
+                                } - Click to expand`}
+                          </CardDescription>
+                        </div>
+                        <ChevronDownIcon
+                          className={`h-5 w-5 transition-transform ${
+                            rootKeywordsOpen ? "rotate-180" : ""
+                          }`}
+                        />
+                      </div>
+                    </CardHeader>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <CardContent className="space-y-4">
+                      <div className="text-xs text-muted-foreground">
+                        Alone, base keywords are not that useful for your KFS,
+                        but understanding which keyword phrases work best to
+                        include the most base keywords
+                      </div>
+
+                      {/* Filter Buttons */}
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant={wordFilter === "1" ? "default" : "outline"}
+                          onClick={() => {
+                            setWordFilter("1");
+                            setCurrentPage(1);
+                          }}
+                          className="text-xs"
+                        >
+                          1 Word Roots
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={wordFilter === "2" ? "default" : "outline"}
+                          onClick={() => {
+                            setWordFilter("2");
+                            setCurrentPage(1);
+                          }}
+                          className="text-xs"
+                        >
+                          2 Word Roots
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={wordFilter === "3+" ? "default" : "outline"}
+                          onClick={() => {
+                            setWordFilter("3+");
+                            setCurrentPage(1);
+                          }}
+                          className="text-xs"
+                        >
+                          3+ Word Roots
+                        </Button>
+                      </div>
+
+                      {/* Root Keywords as Clickable Tags */}
+                      <div className="flex flex-wrap gap-2">
+                        {sortedKeywords.map((kw, index) => {
+                          const allText =
+                            `${title} ${bullet1} ${bullet2} ${bullet3} ${bullet4} ${bullet5} ${description}`.toLowerCase();
+                          const escapedPhrase = kw.phrase
+                            .toLowerCase()
+                            .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                          const regex = new RegExp(
+                            `\\b${escapedPhrase}\\b`,
+                            "g"
+                          );
+                          const matches = allText.match(regex);
+                          const keywordCount = matches ? matches.length : 0;
+
+                          return (
+                            <button
+                              key={index}
+                              onClick={() => toggleKeyword(kw.phrase)}
+                              className={`px-2.5 py-1 text-xs rounded border transition-colors ${
+                                kw.selected
+                                  ? "bg-blue-500 text-white border-blue-600"
+                                  : "bg-background hover:bg-muted border-border"
+                              } ${
+                                keywordCount > 0
+                                  ? "ring-2 ring-green-500/50"
+                                  : ""
+                              }`}
+                            >
+                              <span
+                                className={`font-medium ${
+                                  keywordCount > 0 ? "line-through" : ""
+                                }`}
+                              >
+                                {kw.phrase}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </CollapsibleContent>
+                </Card>
+              </Collapsible>
+            )}
 
             {/* Score Cards Below Keyword Bank */}
             <Card>
