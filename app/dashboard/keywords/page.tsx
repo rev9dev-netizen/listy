@@ -220,10 +220,12 @@ export default function KeywordsPage() {
   // Stage 1: Initial Search Form
   if (!showResults) {
     return (
-      <div className="max-w-5xl mx-auto space-y-6 py-8">
+      <div className="max-w-full mx-auto space-y-6 py-8">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">Cerebro - Reverse ASIN Lookup</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-3xl text-left font-bold">
+            Cerebro - Reverse ASIN Lookup
+          </h1>
+          <p className="text-muted-foreground text-left">
             Enter up to 10 product identifiers to find their top performing
             keywords.
           </p>
