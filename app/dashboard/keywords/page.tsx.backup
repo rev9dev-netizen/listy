@@ -1,0 +1,535 @@
+"use client";
+
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import {
+  Loader2Icon,
+  SearchIcon,
+  ChevronDownIcon,
+  FilterIcon,
+  DownloadIcon,
+  SettingsIcon,
+  TrendingUpIcon,
+  TrendingDownIcon,
+  InfoIcon,
+} from "lucide-react";
+import { toast } from "sonner";
+import Image from "next/image";
+
+interface Keyword {
+  phrase: string;
+  cerebro_iq_score: number;
+  search_volume: number;
+  search_volume_trend: number;
+  organic_rank: number;
+  sponsored_rank: number;
+  competing_products: number;
+  keyword_sales: number;
+  aba_total_click_share: number;
+  aba_total_conv_share: number;
+  suggested_ppc_bid: number;
+  title_density: number;
+  match_type: string;
+  amazon_rec_rank: number;
+  cpr: number;
+  sponsored_asins: number;
+}
+
+export default function KeywordsPage() {
+  const [marketplace, setMarketplace] = useState("US");
+  const [asinList, setAsinList] = useState("");
+  const [seeds, setSeeds] = useState("");
+  const [category, setCategory] = useState("");
+  const [keywords, setKeywords] = useState<Keyword[]>([]);
+  const [filter, setFilter] = useState<string>("all");
+
+  // Cerebro-style filters
+  const [minSearchVolume, setMinSearchVolume] = useState<string>("");
+  const [maxSearchVolume, setMaxSearchVolume] = useState<string>("");
+  const [minWordCount, setMinWordCount] = useState<string>("");
+  const [maxWordCount, setMaxWordCount] = useState<string>("");
+  const [showSponsored, setShowSponsored] = useState<boolean>(true);
+  const [showOrganic, setShowOrganic] = useState<boolean>(true);
+  const [sortBy, setSortBy] = useState<string>("iq_score");
+
+  const generateMutation = useMutation({
+    mutationFn: async (data: {
+      marketplace: string;
+      asin_list?: string[];
+      seeds?: string[];
+      category?: string;
+    }) => {
+      const response = await fetch("/api/keywords/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error("Failed to generate keywords");
+      return response.json();
+    },
+    onSuccess: (data) => {
+      // Enhance keywords with Cerebro-style metrics (mock data for now)
+      const enhancedKeywords = data.keywords.map((k: Keyword) => ({
+        ...k,
+        included: true,
+        search_volume: Math.floor(Math.random() * 50000) + 1000,
+        rank: Math.floor(Math.random() * 100) + 1,
+        sponsored: Math.random() > 0.5,
+        competitors: Math.floor(Math.random() * 500) + 10,
+        word_count: k.term.split(" ").length,
+        iq_score: Math.floor(k.score * 100),
+      }));
+      setKeywords(enhancedKeywords);
+      toast.success(`Generated ${data.keywords.length} keywords!`);
+    },
+    onError: () => {
+      toast.error("Failed to generate keywords");
+    },
+  });
+
+  const handleGenerate = () => {
+    const asins = asinList
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const seedKeywords = seeds
+      .split(/[\n,]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (asins.length === 0 && seedKeywords.length === 0) {
+      toast.error("Please enter at least one ASIN or seed keyword");
+      return;
+    }
+
+    generateMutation.mutate({
+      marketplace,
+      asin_list: asins.length > 0 ? asins : undefined,
+      seeds: seedKeywords.length > 0 ? seedKeywords : undefined,
+      category: category || undefined,
+    });
+  };
+
+  const toggleInclude = (index: number) => {
+    setKeywords((prev) =>
+      prev.map((k, i) => (i === index ? { ...k, included: !k.included } : k))
+    );
+  };
+
+  const filteredKeywords = keywords
+    .filter((k) => {
+      // Basic filters
+      if (filter === "included" && !k.included) return false;
+      if (filter === "excluded" && k.included) return false;
+      if (
+        filter === "primary" ||
+        filter === "secondary" ||
+        filter === "tertiary"
+      ) {
+        if (k.class !== filter) return false;
+      }
+
+      // Cerebro-style filters
+      if (
+        minSearchVolume &&
+        k.search_volume &&
+        k.search_volume < parseInt(minSearchVolume)
+      )
+        return false;
+      if (
+        maxSearchVolume &&
+        k.search_volume &&
+        k.search_volume > parseInt(maxSearchVolume)
+      )
+        return false;
+      if (minWordCount && k.word_count && k.word_count < parseInt(minWordCount))
+        return false;
+      if (maxWordCount && k.word_count && k.word_count > parseInt(maxWordCount))
+        return false;
+      if (!showSponsored && k.sponsored) return false;
+      if (!showOrganic && !k.sponsored) return false;
+
+      return true;
+    })
+    .sort((a, b) => {
+      // Sorting
+      if (sortBy === "iq_score") return (b.iq_score || 0) - (a.iq_score || 0);
+      if (sortBy === "search_volume")
+        return (b.search_volume || 0) - (a.search_volume || 0);
+      if (sortBy === "rank") return (a.rank || 999) - (b.rank || 999);
+      if (sortBy === "competitors")
+        return (b.competitors || 0) - (a.competitors || 0);
+      if (sortBy === "word_count")
+        return (a.word_count || 0) - (b.word_count || 0);
+      return 0;
+    });
+
+  const getClassColor = (cls: string) => {
+    switch (cls) {
+      case "primary":
+        return "bg-green-500/10 text-green-500 border-green-500/20";
+      case "secondary":
+        return "bg-blue-500/10 text-blue-500 border-blue-500/20";
+      case "tertiary":
+        return "bg-gray-500/10 text-gray-500 border-gray-500/20";
+      default:
+        return "";
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold">Keyword Generation</h1>
+        <p className="text-muted-foreground">
+          Extract and analyze keywords from competitor ASINs and seed phrases
+        </p>
+      </div>
+
+      {/* Generation Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Generate Keywords</CardTitle>
+          <CardDescription>
+            Enter competitor ASINs and/or seed keywords to analyze
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="marketplace">Marketplace</Label>
+              <Select value={marketplace} onValueChange={setMarketplace}>
+                <SelectTrigger id="marketplace">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="US">United States</SelectItem>
+                  <SelectItem value="UK">United Kingdom</SelectItem>
+                  <SelectItem value="CA">Canada</SelectItem>
+                  <SelectItem value="DE">Germany</SelectItem>
+                  <SelectItem value="FR">France</SelectItem>
+                  <SelectItem value="IT">Italy</SelectItem>
+                  <SelectItem value="ES">Spain</SelectItem>
+                  <SelectItem value="JP">Japan</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="category">Category (Optional)</Label>
+              <Input
+                id="category"
+                placeholder="e.g., Electronics, Home & Kitchen"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="asins">Competitor ASINs (Optional)</Label>
+            <Textarea
+              id="asins"
+              placeholder="Enter ASINs (one per line or comma-separated)&#10;B08N5WRWNW&#10;B09G9FPHY6&#10;B0BSHF7WHW"
+              value={asinList}
+              onChange={(e) => setAsinList(e.target.value)}
+              rows={4}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="seeds">Seed Keywords (Optional)</Label>
+            <Textarea
+              id="seeds"
+              placeholder="Enter seed keywords (one per line or comma-separated)&#10;wireless charger&#10;fast charging&#10;magsafe compatible"
+              value={seeds}
+              onChange={(e) => setSeeds(e.target.value)}
+              rows={4}
+            />
+          </div>
+
+          <Button
+            onClick={handleGenerate}
+            disabled={generateMutation.isPending}
+            className="w-full"
+          >
+            {generateMutation.isPending ? (
+              <>
+                <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+                Generating Keywords...
+              </>
+            ) : (
+              <>
+                <SparklesIcon className="mr-2 h-4 w-4" />
+                Generate Keywords
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Advanced Filters (Cerebro-style) */}
+      {keywords.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FilterIcon className="h-5 w-5" />
+              Advanced Filters (Cerebro Mode)
+            </CardTitle>
+            <CardDescription>
+              Filter and sort keywords like Helium 10 Cerebro
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* Search Volume */}
+              <div className="space-y-2">
+                <Label>Search Volume Range</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Min"
+                    value={minSearchVolume}
+                    onChange={(e) => setMinSearchVolume(e.target.value)}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Max"
+                    value={maxSearchVolume}
+                    onChange={(e) => setMaxSearchVolume(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Word Count */}
+              <div className="space-y-2">
+                <Label>Word Count</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="Min"
+                    value={minWordCount}
+                    onChange={(e) => setMinWordCount(e.target.value)}
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Max"
+                    value={maxWordCount}
+                    onChange={(e) => setMaxWordCount(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Sort By */}
+              <div className="space-y-2">
+                <Label>Sort By</Label>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="iq_score">
+                      IQ Score (Best First)
+                    </SelectItem>
+                    <SelectItem value="search_volume">Search Volume</SelectItem>
+                    <SelectItem value="rank">Rank Position</SelectItem>
+                    <SelectItem value="competitors">Competitors</SelectItem>
+                    <SelectItem value="word_count">Word Count</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Rank Type */}
+              <div className="space-y-2 col-span-full">
+                <Label>Rank Type</Label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showOrganic}
+                      onChange={(e) => setShowOrganic(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-sm">Show Organic</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showSponsored}
+                      onChange={(e) => setShowSponsored(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-sm">Show Sponsored (PPC)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Results */}
+      {keywords.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>
+                  Generated Keywords ({filteredKeywords.length})
+                </CardTitle>
+                <CardDescription>
+                  {keywords.filter((k) => k.included).length} included •{" "}
+                  {keywords.filter((k) => !k.included).length} excluded
+                </CardDescription>
+              </div>
+              <Select value={filter} onValueChange={setFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Keywords</SelectItem>
+                  <SelectItem value="included">Included Only</SelectItem>
+                  <SelectItem value="excluded">Excluded Only</SelectItem>
+                  <SelectItem value="primary">Primary Only</SelectItem>
+                  <SelectItem value="secondary">Secondary Only</SelectItem>
+                  <SelectItem value="tertiary">Tertiary Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">Include</TableHead>
+                    <TableHead>Keyword</TableHead>
+                    <TableHead>IQ Score</TableHead>
+                    <TableHead>
+                      <div className="flex items-center gap-1">
+                        <TrendingUpIcon className="h-3 w-3" />
+                        Search Vol
+                      </div>
+                    </TableHead>
+                    <TableHead>
+                      <div className="flex items-center gap-1">
+                        <TargetIcon className="h-3 w-3" />
+                        Rank
+                      </div>
+                    </TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>
+                      <div className="flex items-center gap-1">
+                        <UsersIcon className="h-3 w-3" />
+                        Competitors
+                      </div>
+                    </TableHead>
+                    <TableHead>Words</TableHead>
+                    <TableHead>Class</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredKeywords.map((keyword, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            toggleInclude(keywords.indexOf(keyword))
+                          }
+                        >
+                          {keyword.included ? (
+                            <CheckIcon className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <XIcon className="h-4 w-4 text-red-500" />
+                          )}
+                        </Button>
+                      </TableCell>
+                      <TableCell className="font-medium max-w-[200px]">
+                        {keyword.term}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="default"
+                          className="bg-purple-500/10 text-purple-500 border-purple-500/20"
+                        >
+                          {keyword.iq_score || 0}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {keyword.search_volume?.toLocaleString() || "-"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">#{keyword.rank || "-"}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {keyword.sponsored ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
+                          >
+                            Sponsored
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="bg-green-500/10 text-green-500 border-green-500/20"
+                          >
+                            Organic
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {keyword.competitors?.toLocaleString() || "-"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {keyword.word_count || 1}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={getClassColor(keyword.class)}
+                        >
+                          {keyword.class}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,99 @@
+// Prisma Schema for Listy - Amazon Listing Builder
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(uuid())
+  clerkId   String    @unique
+  email     String    @unique
+  plan      String    @default("free")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  projects  Project[]
+
+  @@map("users")
+}
+
+model Project {
+  id          String       @id @default(uuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketplace String       @default("US")
+  brand       String?
+  productType String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  ingests     Ingest[]
+  keywords    Keyword[]
+  drafts      Draft[]
+  constraints Constraint[]
+
+  @@index([userId])
+  @@map("projects")
+}
+
+model Ingest {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  asin      String
+  rawJson   Json
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@map("ingests")
+}
+
+model Keyword {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  term      String
+  score     Float
+  clusterId String?
+  class     String // primary, secondary, tertiary
+  source    String // competitor, seed, extracted
+  included  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([class])
+  @@map("keywords")
+}
+
+model Draft {
+  id           String   @id @default(uuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title        String   @db.Text
+  bullets      Json // Array of bullet points
+  description  String   @db.Text
+  backendTerms String?  @db.Text
+  version      Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([projectId])
+  @@map("drafts")
+}
+
+model Constraint {
+  id          String  @id @default(uuid())
+  projectId   String
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  titleLimit  Int     @default(180)
+  bulletLimit Int     @default(220)
+  descLimit   Int     @default(1500)
+  disallowed  Json // Array of disallowed terms
+  locale      String  @default("en-US")
+
+  @@unique([projectId])
+  @@map("constraints")
+}
