@@ -787,7 +787,8 @@ export default function ListingBuilderPage() {
                           <div className="space-y-3 pt-2">
                             <div className="flex items-center justify-between">
                               <span className="text-sm font-medium">
-                                {selectedCount} of {keywords.length} selected
+                                Keyword Phrases ({keywords.length}) |{" "}
+                                {usedKeywordsCount}/{keywords.length} used
                               </span>
                             </div>
 
