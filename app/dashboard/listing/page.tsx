@@ -47,6 +47,8 @@ import {
   DownloadIcon,
   ArrowUpDownIcon,
   PencilIcon,
+  CheckIcon,
+  XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -90,6 +92,8 @@ export default function ListingBuilderPage() {
   // AI Parameters state (collapsible)
   const [parametersOpen, setParametersOpen] = useState(false);
   const [productCharacteristics, setProductCharacteristics] = useState("");
+  const [characteristicTags, setCharacteristicTags] = useState<string[]>([]);
+  const [characteristicInput, setCharacteristicInput] = useState("");
   const [brandName, setBrandName] = useState("");
   const [showBrandName, setShowBrandName] = useState("beginning");
   const [productName, setProductName] = useState("");
@@ -223,6 +227,33 @@ export default function ListingBuilderPage() {
     setKeywords([...keywords, newKeyword]);
     setManualKeyword("");
     toast.success("Keyword added!");
+  };
+
+  // Handle characteristic tag input
+  const handleCharacteristicKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>
+  ) => {
+    if (e.key === " " || e.key === "," || e.key === "Enter") {
+      e.preventDefault();
+      const value = characteristicInput.trim();
+      if (value && !characteristicTags.includes(value)) {
+        const newTags = [...characteristicTags, value];
+        setCharacteristicTags(newTags);
+        setProductCharacteristics(newTags.join(", "));
+        setCharacteristicInput("");
+      }
+    } else if (e.key === "Backspace" && !characteristicInput) {
+      // Remove last tag on backspace when input is empty
+      const newTags = characteristicTags.slice(0, -1);
+      setCharacteristicTags(newTags);
+      setProductCharacteristics(newTags.join(", "));
+    }
+  };
+
+  const removeCharacteristicTag = (tagToRemove: string) => {
+    const newTags = characteristicTags.filter((tag) => tag !== tagToRemove);
+    setCharacteristicTags(newTags);
+    setProductCharacteristics(newTags.join(", "));
   };
 
   // Toggle keyword selection
@@ -1597,197 +1628,130 @@ export default function ListingBuilderPage() {
                         <h4 className="text-sm font-semibold">
                           Best Practices
                         </h4>
-                        <div className="space-y-2">
+                        <div className="border rounded-lg divide-y">
                           {/* Title checks */}
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
                             <span className="text-muted-foreground">
                               Title does not contain symbols or emojis
                             </span>
-                            <span
-                              className={
-                                title && !/[^\w\s-]/.test(title)
-                                  ? "text-green-600"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {title && !/[^\w\s-]/.test(title) ? "✓" : "○"}
-                            </span>
+                            {title && !/[^\w\s-]/.test(title) ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                            )}
                           </div>
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
                             <span className="text-muted-foreground">
                               Title contains 150+ characters
                             </span>
-                            <span
-                              className={
-                                title.length >= 150
-                                  ? "text-green-600"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {title.length >= 150 ? "✓" : "○"}
-                            </span>
+                            {title.length >= 150 ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                            )}
                           </div>
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
                             <span className="text-muted-foreground">
                               Title does not contain same word &gt;2 times
                             </span>
-                            <span
-                              className={(() => {
-                                const words = title.toLowerCase().split(/\s+/);
-                                const wordCount = words.reduce(
-                                  (acc: Record<string, number>, word) => {
-                                    if (word.length > 3)
-                                      acc[word] = (acc[word] || 0) + 1;
-                                    return acc;
-                                  },
-                                  {}
+                            {(() => {
+                              if (!title) {
+                                return (
+                                  <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
                                 );
-                                const hasRepeat = Object.values(wordCount).some(
-                                  (count) => count > 2
-                                );
-                                return !hasRepeat && title
-                                  ? "text-green-600"
-                                  : "text-red-600";
-                              })()}
-                            >
-                              {(() => {
-                                const words = title.toLowerCase().split(/\s+/);
-                                const wordCount = words.reduce(
-                                  (acc: Record<string, number>, word) => {
-                                    if (word.length > 3)
-                                      acc[word] = (acc[word] || 0) + 1;
-                                    return acc;
-                                  },
-                                  {}
-                                );
-                                const hasRepeat = Object.values(wordCount).some(
-                                  (count) => count > 2
-                                );
-                                return !hasRepeat && title ? "✓" : "✗";
-                              })()}
-                            </span>
+                              }
+                              const words = title.toLowerCase().split(/\s+/);
+                              const wordCount = words.reduce(
+                                (acc: Record<string, number>, word) => {
+                                  if (word.length > 3)
+                                    acc[word] = (acc[word] || 0) + 1;
+                                  return acc;
+                                },
+                                {}
+                              );
+                              const hasRepeat = Object.values(wordCount).some(
+                                (count) => count > 2
+                              );
+                              return !hasRepeat ? (
+                                <CheckIcon className="h-4 w-4 text-green-600" />
+                              ) : (
+                                <XIcon className="h-4 w-4 text-red-600" />
+                              );
+                            })()}
                           </div>
 
                           {/* Bullet points checks */}
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
                             <span className="text-muted-foreground">
                               5+ bullet points
                             </span>
-                            <span
-                              className={
-                                [
-                                  bullet1,
-                                  bullet2,
-                                  bullet3,
-                                  bullet4,
-                                  bullet5,
-                                ].filter((b) => b.trim()).length >= 5
-                                  ? "text-green-600"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {[
-                                bullet1,
-                                bullet2,
-                                bullet3,
-                                bullet4,
-                                bullet5,
-                              ].filter((b) => b.trim()).length >= 5
-                                ? "✓"
-                                : "○"}
-                            </span>
+                            {[
+                              bullet1,
+                              bullet2,
+                              bullet3,
+                              bullet4,
+                              bullet5,
+                            ].filter((b) => b.trim()).length >= 5 ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                            )}
                           </div>
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
                             <span className="text-muted-foreground">
                               150+ characters in each bullet point
                             </span>
-                            <span
-                              className={
-                                [
-                                  bullet1,
-                                  bullet2,
-                                  bullet3,
-                                  bullet4,
-                                  bullet5,
-                                ].every((b) => b.length >= 150) && bullet1
-                                  ? "text-green-600"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {[
-                                bullet1,
-                                bullet2,
-                                bullet3,
-                                bullet4,
-                                bullet5,
-                              ].every((b) => b.length >= 150) && bullet1
-                                ? "✓"
-                                : "○"}
-                            </span>
+                            {[
+                              bullet1,
+                              bullet2,
+                              bullet3,
+                              bullet4,
+                              bullet5,
+                            ].every((b) => b.length >= 150) && bullet1 ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                            )}
                           </div>
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
                             <span className="text-muted-foreground">
                               First letter of bullet points is capitalized
                             </span>
-                            <span
-                              className={
-                                [bullet1, bullet2, bullet3, bullet4, bullet5]
-                                  .filter((b) => b)
-                                  .every((b) => /^[A-Z]/.test(b)) && bullet1
-                                  ? "text-green-600"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {[bullet1, bullet2, bullet3, bullet4, bullet5]
-                                .filter((b) => b)
-                                .every((b) => /^[A-Z]/.test(b)) && bullet1
-                                ? "✓"
-                                : "○"}
-                            </span>
+                            {[bullet1, bullet2, bullet3, bullet4, bullet5]
+                              .filter((b) => b)
+                              .every((b) => /^[A-Z]/.test(b)) && bullet1 ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                            )}
                           </div>
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
                             <span className="text-muted-foreground">
                               Bullet points are not in all caps or contain icons
                             </span>
-                            <span
-                              className={
-                                [bullet1, bullet2, bullet3, bullet4, bullet5]
-                                  .filter((b) => b)
-                                  .every(
-                                    (b) =>
-                                      b !== b.toUpperCase() &&
-                                      !/[^\w\s.,!?-]/.test(b)
-                                  ) && bullet1
-                                  ? "text-green-600"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {[bullet1, bullet2, bullet3, bullet4, bullet5]
-                                .filter((b) => b)
-                                .every(
-                                  (b) =>
-                                    b !== b.toUpperCase() &&
-                                    !/[^\w\s.,!?-]/.test(b)
-                                ) && bullet1
-                                ? "✓"
-                                : "○"}
-                            </span>
+                            {[bullet1, bullet2, bullet3, bullet4, bullet5]
+                              .filter((b) => b)
+                              .every(
+                                (b) =>
+                                  b !== b.toUpperCase() &&
+                                  !/[^\w\s.,!?-]/.test(b)
+                              ) && bullet1 ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                            )}
                           </div>
 
                           {/* Description check */}
-                          <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
                             <span className="text-muted-foreground">
                               1000+ characters in description or A+ content
                             </span>
-                            <span
-                              className={
-                                description.length >= 1000
-                                  ? "text-green-600"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {description.length >= 1000 ? "✓" : "○"}
-                            </span>
+                            {description.length >= 1000 ? (
+                              <CheckIcon className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1828,43 +1792,106 @@ export default function ListingBuilderPage() {
                   </CardHeader>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <CardContent className="space-y-4 pt-0">
-                    <div className="space-y-2">
-                      <Label className="font-medium">
-                        Product Characteristics *{" "}
-                        <span className="text-red-600 font-semibold dark:text-red-400">
-                          Required
-                        </span>
-                      </Label>
-                      <Textarea
-                        placeholder="e.g., Blue, 5G, Durable and sleek design, night mode, etc"
-                        value={productCharacteristics}
-                        onChange={(e) =>
-                          setProductCharacteristics(e.target.value)
-                        }
-                        rows={3}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {productCharacteristics.length}/1500 characters
-                      </p>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
+                  <CardContent className="space-y-3 pt-0">
+                    {/* Brand Name | Product Characteristics */}
+                    <div className="grid gap-3 grid-cols-1 lg:grid-cols-[200px_1fr]">
                       <div className="space-y-2">
-                        <Label className="font-medium">Brand Name</Label>
+                        <Label className="font-medium text-sm">
+                          Brand Name
+                        </Label>
                         <Input
                           placeholder="Optional"
                           value={brandName}
                           onChange={(e) => setBrandName(e.target.value)}
+                          className="h-9"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label className="font-medium">Show Brand Name</Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="font-medium text-sm">
+                            Product Characteristics *{" "}
+                            <span className="text-red-600 font-semibold dark:text-red-400">
+                              Required
+                            </span>
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            {productCharacteristics.length}/1500 characters
+                          </p>
+                        </div>
+                        <div className="relative min-h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            {characteristicTags.map((tag, index) => (
+                              <span
+                                key={index}
+                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20"
+                              >
+                                {tag}
+                                <button
+                                  type="button"
+                                  onClick={() => removeCharacteristicTag(tag)}
+                                  className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
+                                >
+                                  <XIcon className="h-3 w-3" />
+                                </button>
+                              </span>
+                            ))}
+                            <input
+                              type="text"
+                              value={characteristicInput}
+                              onChange={(e) =>
+                                setCharacteristicInput(e.target.value)
+                              }
+                              onKeyDown={handleCharacteristicKeyDown}
+                              placeholder={
+                                characteristicTags.length === 0
+                                  ? "Type and press space or comma to add tags..."
+                                  : ""
+                              }
+                              className="flex-1 min-w-[120px] outline-none bg-transparent placeholder:text-muted-foreground"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Product Name | Tone | Show Brand Name */}
+                    <div className="grid gap-3 grid-cols-1 lg:grid-cols-[1fr_180px_220px]">
+                      <div className="space-y-2">
+                        <Label className="font-medium text-sm">
+                          Product Name
+                        </Label>
+                        <Input
+                          placeholder="e.g., Knee Straps"
+                          value={productName}
+                          onChange={(e) => setProductName(e.target.value)}
+                          className="h-9"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="font-medium text-sm">Tone</Label>
+                        <Select value={tone} onValueChange={setTone}>
+                          <SelectTrigger className="h-9 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="formal">Formal</SelectItem>
+                            <SelectItem value="casual">Casual</SelectItem>
+                            <SelectItem value="professional">
+                              Professional
+                            </SelectItem>
+                            <SelectItem value="luxury">Luxury</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="font-medium text-sm">
+                          Show Brand Name
+                        </Label>
                         <Select
                           value={showBrandName}
                           onValueChange={setShowBrandName}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger className="h-9 w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1880,59 +1907,40 @@ export default function ListingBuilderPage() {
                       </div>
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
+                    {/* Target Audience | Words & Special Characters to Avoid */}
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label className="font-medium">Product Name</Label>
+                        <div className="flex items-center justify-between">
+                          <Label className="font-medium text-sm">
+                            Target Audience
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            {targetAudience.length}/100
+                          </p>
+                        </div>
                         <Input
-                          placeholder="e.g., Knee Straps"
-                          value={productName}
-                          onChange={(e) => setProductName(e.target.value)}
+                          placeholder="e.g., Athletes, fitness enthusiasts, men & women"
+                          value={targetAudience}
+                          onChange={(e) => setTargetAudience(e.target.value)}
+                          className="h-9"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label className="font-medium">Tone</Label>
-                        <Select value={tone} onValueChange={setTone}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="formal">Formal</SelectItem>
-                            <SelectItem value="casual">Casual</SelectItem>
-                            <SelectItem value="professional">
-                              Professional
-                            </SelectItem>
-                            <SelectItem value="luxury">Luxury</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center justify-between">
+                          <Label className="font-medium text-sm">
+                            Words & Special Characters to Avoid
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            {avoidWords.length}/100
+                          </p>
+                        </div>
+                        <Input
+                          placeholder="e.g., cheap, bad, expensive, !, @, #"
+                          value={avoidWords}
+                          onChange={(e) => setAvoidWords(e.target.value)}
+                          className="h-9"
+                        />
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="font-medium">Target Audience</Label>
-                      <Textarea
-                        placeholder="Enter attributes separated by commas"
-                        value={targetAudience}
-                        onChange={(e) => setTargetAudience(e.target.value)}
-                        rows={2}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {targetAudience.length}/100
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label className="font-medium">
-                        Words & Special Characters to Avoid
-                      </Label>
-                      <Textarea
-                        placeholder="Enter words & characters separated by commas"
-                        value={avoidWords}
-                        onChange={(e) => setAvoidWords(e.target.value)}
-                        rows={2}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {avoidWords.length}/100
-                      </p>
                     </div>
                   </CardContent>
                 </CollapsibleContent>
@@ -1961,19 +1969,7 @@ export default function ListingBuilderPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Textarea
-                  placeholder="Start typing content here"
-                  value={title}
-                  onChange={(e) => {
-                    setTitle(e.target.value);
-                    updateScore();
-                  }}
-                  rows={3}
-                />
-                <div className="flex items-center justify-between text-xs">
-                  <span className={getCharCountColor(title.length, titleLimit)}>
-                    {title.length}/{titleLimit} characters
-                  </span>
+                <div className="flex items-center justify-between text-xs mb-2">
                   <span className="text-muted-foreground">
                     Keywords used:{" "}
                     {
@@ -1984,7 +1980,19 @@ export default function ListingBuilderPage() {
                       ).length
                     }
                   </span>
+                  <span className={getCharCountColor(title.length, titleLimit)}>
+                    {title.length}/{titleLimit} characters
+                  </span>
                 </div>
+                <Textarea
+                  placeholder="Start typing content here"
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    updateScore();
+                  }}
+                  rows={3}
+                />
               </CardContent>
             </Card>
 
@@ -2020,7 +2028,17 @@ export default function ListingBuilderPage() {
                   { value: bullet5, setter: setBullet5, label: "Feature #5" },
                 ].map((bullet, index) => (
                   <div key={index} className="space-y-2">
-                    <Label>{bullet.label}</Label>
+                    <div className="flex items-center justify-between">
+                      <Label>{bullet.label}</Label>
+                      <p
+                        className={`text-xs ${getCharCountColor(
+                          bullet.value.length,
+                          bulletLimit
+                        )}`}
+                      >
+                        {bullet.value.length}/{bulletLimit} characters
+                      </p>
+                    </div>
                     <Textarea
                       placeholder="Start typing content here"
                       value={bullet.value}
@@ -2030,14 +2048,6 @@ export default function ListingBuilderPage() {
                       }}
                       rows={2}
                     />
-                    <p
-                      className={`text-xs ${getCharCountColor(
-                        bullet.value.length,
-                        bulletLimit
-                      )}`}
-                    >
-                      {bullet.value.length}/{bulletLimit} characters
-                    </p>
                   </div>
                 ))}
               </CardContent>
@@ -2067,6 +2077,16 @@ export default function ListingBuilderPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
+                <div className="flex items-center justify-end">
+                  <p
+                    className={`text-xs ${getCharCountColor(
+                      description.length,
+                      descLimit
+                    )}`}
+                  >
+                    {description.length}/{descLimit} characters
+                  </p>
+                </div>
                 <Textarea
                   placeholder="Start typing content here"
                   value={description}
@@ -2076,14 +2096,6 @@ export default function ListingBuilderPage() {
                   }}
                   rows={8}
                 />
-                <p
-                  className={`text-xs ${getCharCountColor(
-                    description.length,
-                    descLimit
-                  )}`}
-                >
-                  {description.length}/{descLimit} characters
-                </p>
               </CardContent>
             </Card>
           </div>
