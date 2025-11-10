@@ -1,5 +1,6 @@
 "use client";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { CheckIcon, XIcon } from "lucide-react";
 import type { UIKeyword, ListingContent } from "../_types";
 import { keywordIsUsed } from "../_utils";
 
@@ -73,6 +74,28 @@ export function ListingAnalysis({ keywords, content, generatedVolume }: Props) {
   const overall = overallScore();
   const seo = seoStrength();
   const richness = contentRichness();
+
+  // Best practice booleans
+  const bp_titleNoSymbols = !!title && !/[^\w\s-]/.test(title);
+  const bp_title150 = title.length >= 150; // 150+ true
+  const bp_titleNoRepeat = (() => {
+    if (!title) return false;
+    const words = title.toLowerCase().split(/\s+/);
+    const counts: Record<string, number> = {};
+    for (const w of words) if (w.length > 3) counts[w] = (counts[w] || 0) + 1;
+    return !Object.values(counts).some((c) => c > 2);
+  })();
+  const filledBullets = bullets.filter((b) => b.trim()).length;
+  const bp_5Bullets = filledBullets >= 5;
+  const bp_eachBullet150 =
+    bullets.every((b) => !b || b.length >= 150) && bullets[0].length >= 150; // require all filled >=150
+  const bp_bulletsCapitalized = bullets
+    .filter(Boolean)
+    .every((b) => /^[A-Z]/.test(b));
+  const bp_bulletsNotAllCapsNoIcons = bullets
+    .filter(Boolean)
+    .every((b) => b !== b.toUpperCase() && !/[^\w\s.,!?-]/.test(b));
+  const bp_description1000 = description.length >= 1000;
 
   return (
     <Card>
@@ -162,7 +185,59 @@ export function ListingAnalysis({ keywords, content, generatedVolume }: Props) {
             </div>
           </div>
         </div>
+        {/* Best Practices */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold">Best Practices</h4>
+          <div className="border rounded-lg divide-y">
+            <BestPracticeRow
+              label="Title does not contain symbols or emojis"
+              ok={bp_titleNoSymbols}
+            />
+            <BestPracticeRow
+              label="Title contains 150+ characters"
+              ok={bp_title150}
+            />
+            <BestPracticeRow
+              label="Title does not contain same word >2 times"
+              ok={bp_titleNoRepeat}
+            />
+            <BestPracticeRow label="5+ bullet points" ok={bp_5Bullets} />
+            <BestPracticeRow
+              label="150+ characters in each bullet point"
+              ok={bp_eachBullet150}
+            />
+            <BestPracticeRow
+              label="First letter of bullet points is capitalized"
+              ok={bp_bulletsCapitalized}
+            />
+            <BestPracticeRow
+              label="Bullet points are not in all caps or contain icons"
+              ok={bp_bulletsNotAllCapsNoIcons}
+            />
+            <BestPracticeRow
+              label="1000+ characters in description or A+ content"
+              ok={bp_description1000}
+            />
+          </div>
+        </div>
       </CardContent>
     </Card>
+  );
+}
+
+interface RowProps {
+  label: string;
+  ok: boolean;
+}
+function BestPracticeRow({ label, ok }: RowProps) {
+  return (
+    <div className="flex items-center justify-between text-sm p-3 hover:bg-muted/50 transition-colors">
+      <span className="text-muted-foreground">{label}</span>
+      {ok ? (
+        <CheckIcon className="h-4 w-4 text-green-600" />
+      ) : (
+        <XIcon className="h-4 w-4 text-red-600" />
+      )}
+    </div>
   );
 }

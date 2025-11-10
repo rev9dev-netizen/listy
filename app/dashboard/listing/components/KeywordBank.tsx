@@ -1,4 +1,5 @@
 "use client";
+import { useEffect } from "react";
 import {
   Card,
   CardHeader,
@@ -101,6 +102,12 @@ export function KeywordBank(props: Props) {
 
   const totalPages = Math.ceil(sortedKeywords.length / perPage);
   const paginated = paginate(sortedKeywords, currentPage, perPage);
+
+  // Clamp current page when keyword count or sorting changes
+  useEffect(() => {
+    if (totalPages === 0 && currentPage !== 1) setCurrentPage(1);
+    else if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage, setCurrentPage]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -423,6 +430,54 @@ export function KeywordBank(props: Props) {
                     )}
                   </div>
 
+                  {/* Quick actions: Generate with AI and Filter */}
+                  {selectedCount > 0 && (
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={generateTitle}
+                        disabled={generating || !canGenerate}
+                        className="flex-1 text-xs"
+                      >
+                        + Product Title
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={generateBullets}
+                        disabled={generating || !canGenerate}
+                        className="flex-1 text-xs"
+                      >
+                        + Bullet Points
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={generateDescription}
+                        disabled={generating || !canGenerate}
+                        className="flex-1 text-xs"
+                      >
+                        + Description
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="w-full bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                      onClick={async () => {
+                        /* TODO: AI filtering */
+                      }}
+                      disabled={keywords.length === 0 || !canGenerate}
+                    >
+                      <SparklesIcon className="mr-2 h-4 w-4" />
+                      AI Filter Irrelevant Keywords
+                    </Button>
+                  </div>
+
                   <TooltipProvider>
                     <div className="border rounded-lg">
                       <div className="grid grid-cols-[auto_1fr_40px_55px_50px_45px] gap-2 p-2 border-b bg-muted/50 text-xs font-medium">
@@ -545,53 +600,6 @@ export function KeywordBank(props: Props) {
                         </Button>
                       </div>
                     )}
-
-                    {selectedCount > 0 && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={generateTitle}
-                          disabled={generating || !canGenerate}
-                          className="flex-1 text-xs"
-                        >
-                          + Product Title
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={generateBullets}
-                          disabled={generating || !canGenerate}
-                          className="flex-1 text-xs"
-                        >
-                          + Bullet Points
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={generateDescription}
-                          disabled={generating || !canGenerate}
-                          className="flex-1 text-xs"
-                        >
-                          + Description
-                        </Button>
-                      </div>
-                    )}
-
-                    <div className="space-y-1.5">
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="w-full bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                        onClick={async () => {
-                          /* TODO: AI filtering */
-                        }}
-                        disabled={keywords.length === 0 || !canGenerate}
-                      >
-                        <SparklesIcon className="mr-2 h-4 w-4" />
-                        AI Filter Irrelevant Keywords
-                      </Button>
-                    </div>
                   </TooltipProvider>
                 </CardContent>
               </CollapsibleContent>

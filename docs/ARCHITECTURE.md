@@ -145,10 +145,10 @@ Helper wrapper provides get/set/del/invalidatePattern. Pattern invalidation plan
 - App Router with layouts: `RootLayout` sets fonts & providers; `DashboardLayout` supplies navigation and theme toggle.
 - Providers: ClerkProvider, ReactQueryProvider, ThemeProvider, Toaster.
 - Feature Screens:
-   - Home (marketing + CTA)
-   - Dashboard (project stats & quick actions)
-   - Keywords Page (two-stage flow: input → results with filtering, currently enriched with mock metrics)
-   - Listing Builder (large interactive editor; keyword bank upload, manual additions, AI generation per section, scoring & best practices panel)
+  - Home (marketing + CTA)
+  - Dashboard (project stats & quick actions)
+  - Keywords Page (two-stage flow: input → results with filtering, currently enriched with mock metrics)
+  - Listing Builder (large interactive editor; keyword bank upload, manual additions, AI generation per section, scoring & best practices panel)
 - State Management: React Query for async data (projects, keyword generation); local `useState` for complex draft-building interactions.
 - Design System: Custom components wrap Radix primitives (button, dialog, tooltip, table, collapsible, etc.) plus utility helpers `cn`.
 
@@ -181,9 +181,11 @@ UPSTASH_REDIS_REST_TOKEN=...
 CLERK_SECRET_KEY=...
 CLERK_PUBLISHABLE_KEY=...
 ```
+
 (Ensure all are set for production; Prisma currently uses a mock client until engines install.)
 
 ## 13. Build & Run Workflow
+
 Development:
 
 - `pnpm install`

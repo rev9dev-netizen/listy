@@ -55,20 +55,24 @@ export default function ListingBuilderPage() {
               generating={builder.generateContentMutation.isPending}
               onToggleKeyword={builder.toggleKeyword}
             />
-            <RootKeywords
-              open={builder.rootKeywordsOpen}
-              onOpenChange={builder.setRootKeywordsOpen}
-              keywords={builder.keywords}
-              filter={builder.rootWordFilter}
-              setFilter={builder.setRootWordFilter}
-              onToggleKeyword={builder.toggleKeyword}
-              content={builder.content}
-            />
-            <ListingAnalysis
-              keywords={builder.keywords}
-              content={builder.content}
-              generatedVolume={builder.metrics.generatedVolume}
-            />
+            {builder.keywords.length > 0 && (
+              <>
+                <RootKeywords
+                  open={builder.rootKeywordsOpen}
+                  onOpenChange={builder.setRootKeywordsOpen}
+                  keywords={builder.keywords}
+                  filter={builder.rootWordFilter}
+                  setFilter={builder.setRootWordFilter}
+                  onToggleKeyword={builder.toggleKeyword}
+                  content={builder.content}
+                />
+                <ListingAnalysis
+                  keywords={builder.keywords}
+                  content={builder.content}
+                  generatedVolume={builder.metrics.generatedVolume}
+                />
+              </>
+            )}
           </div>
         </div>
         <div className="flex flex-col h-full overflow-hidden">
@@ -94,7 +98,7 @@ export default function ListingBuilderPage() {
               }
               canGenerate={builder.canGenerate}
               generate={() =>
-                builder.generateContentMutation.mutate({ section: "title" })
+                builder.generateContentMutation.mutate({ section: 'title' })
               }
               generating={builder.generateContentMutation.isPending}
             />
@@ -119,7 +123,7 @@ export default function ListingBuilderPage() {
               limit={builder.limits.bulletLimit}
               canGenerate={builder.canGenerate}
               generate={() =>
-                builder.generateContentMutation.mutate({ section: "bullets" })
+                builder.generateContentMutation.mutate({ section: 'bullets' })
               }
               generating={builder.generateContentMutation.isPending}
             />
@@ -131,9 +135,7 @@ export default function ListingBuilderPage() {
               limit={builder.limits.descLimit}
               canGenerate={builder.canGenerate}
               generate={() =>
-                builder.generateContentMutation.mutate({
-                  section: "description",
-                })
+                builder.generateContentMutation.mutate({ section: 'description' })
               }
               generating={builder.generateContentMutation.isPending}
             />
