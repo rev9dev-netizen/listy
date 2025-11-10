@@ -452,7 +452,7 @@ export default function ListingBuilderPage() {
 
           {/* Tab 2: Content Editor */}
           <TabsContent value="editor" className="mt-6">
-            <div className="grid gap-6 lg:grid-cols-[280px_1fr_320px]">
+            <div className="grid gap-3 lg:grid-cols-[280px_1fr_320px]">
               {/* Left: Keywords/Phrases */}
               <Card>
                 <CardHeader>

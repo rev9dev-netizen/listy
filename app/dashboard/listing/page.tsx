@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Collapsible,
   CollapsibleContent,
@@ -43,8 +44,17 @@ import {
   RefreshCwIcon,
   ThumbsUpIcon,
   ThumbsDownIcon,
+  DownloadIcon,
+  ArrowUpDownIcon,
+  PencilIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Keyword {
   phrase: string;
@@ -65,6 +75,12 @@ export default function ListingBuilderPage() {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [manualKeyword, setManualKeyword] = useState("");
   const [sortBy, setSortBy] = useState<"volume" | "sales" | "alpha">("volume");
+  const [showUpload, setShowUpload] = useState(true);
+  const [keywordBankOpen, setKeywordBankOpen] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isUploading, setIsUploading] = useState(false);
+  const [manualKeywordDialog, setManualKeywordDialog] = useState(false);
+  const keywordsPerPage = 20;
 
   // AI Parameters state (collapsible)
   const [parametersOpen, setParametersOpen] = useState(false);
@@ -136,16 +152,57 @@ export default function ListingBuilderPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    setIsUploading(true);
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
       const parsedKeywords = parseCerebroCSV(text);
-      setKeywords(parsedKeywords);
-      toast.success(
-        `Loaded ${parsedKeywords.length} keywords from Cerebro file`
-      );
+
+      // Simulate processing time for better UX
+      setTimeout(() => {
+        setKeywords(parsedKeywords);
+        setShowUpload(false);
+        setIsUploading(false);
+        setCurrentPage(1); // Reset to first page
+        toast.success(
+          `Loaded ${parsedKeywords.length} keywords from Cerebro file`
+        );
+      }, 500);
+
+      // Reset the file input
+      event.target.value = "";
     };
     reader.readAsText(file);
+  };
+
+  // Export keywords as CSV
+  const handleExportKeywords = () => {
+    if (keywords.length === 0) {
+      toast.error("No keywords to export");
+      return;
+    }
+
+    const csvContent = [
+      "Keyword,Search Volume,Sales,CPS,Selected",
+      ...keywords.map(
+        (k) =>
+          `"${k.phrase}",${k.searchVolume},${k.sales},${k.cps ?? "N/A"},${
+            k.selected ? "Yes" : "No"
+          }`
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `keyword-bank-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Keywords exported successfully!");
   };
 
   // Add manual keyword
@@ -317,6 +374,49 @@ export default function ListingBuilderPage() {
     return a.phrase.localeCompare(b.phrase);
   });
 
+  // Pagination calculations
+  const totalPages = Math.ceil(sortedKeywords.length / keywordsPerPage);
+  const startIndex = (currentPage - 1) * keywordsPerPage;
+  const endIndex = startIndex + keywordsPerPage;
+  const paginatedKeywords = sortedKeywords.slice(startIndex, endIndex);
+
+  // Generate page numbers for pagination
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    const maxVisible = 5;
+
+    if (totalPages <= maxVisible + 2) {
+      // Show all pages if total is small
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      // Always show first page
+      pages.push(1);
+
+      if (currentPage > 3) {
+        pages.push("...");
+      }
+
+      // Show pages around current
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+
+      if (currentPage < totalPages - 2) {
+        pages.push("...");
+      }
+
+      // Always show last page
+      pages.push(totalPages);
+    }
+
+    return pages;
+  };
+
   const selectedCount = keywords.filter((k) => k.selected).length;
   const canGenerate =
     selectedCount > 0 && productCharacteristics.trim().length > 0;
@@ -343,468 +443,687 @@ export default function ListingBuilderPage() {
       </div>
 
       {/* Main Layout: Keyword Bank (Left) + Content Editor (Right) */}
-      <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
-        {/* Left: Keyword Bank */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Keyword Bank</CardTitle>
-              <CardDescription>
-                Upload Cerebro CSV or add keywords manually
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Upload Cerebro File */}
-              <div className="space-y-2">
-                <Label htmlFor="cerebro-upload">Upload Cerebro CSV</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="cerebro-upload"
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileUpload}
-                    className="flex-1"
-                  />
-                  <Button variant="outline" size="icon">
-                    <UploadIcon className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Manually Add Keywords */}
-              <div className="space-y-2">
-                <Label htmlFor="manual-keyword">Add Keywords Manually</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="manual-keyword"
-                    placeholder="Enter keyword or phrase"
-                    value={manualKeyword}
-                    onChange={(e) => setManualKeyword(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddKeyword();
-                      }
-                    }}
-                  />
-                  <Button
-                    onClick={handleAddKeyword}
-                    disabled={!manualKeyword.trim()}
-                    size="icon"
-                  >
-                    <PlusIcon className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Keywords List */}
-              {keywords.length > 0 && (
-                <>
-                  <div className="flex items-center justify-between pt-2">
-                    <span className="text-sm font-medium">
-                      {selectedCount} of {keywords.length} selected
-                    </span>
-                    <Select
-                      value={sortBy}
-                      onValueChange={(v) =>
-                        setSortBy(v as "volume" | "sales" | "alpha")
-                      }
-                    >
-                      <SelectTrigger className="w-32 h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="volume">SV</SelectItem>
-                        <SelectItem value="sales">Sales</SelectItem>
-                        <SelectItem value="alpha">A-Z</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Keywords Table */}
-                  <div className="border rounded-lg">
-                    <div className="grid grid-cols-[auto_1fr_60px_60px_60px] gap-2 p-2 border-b bg-muted/50 text-xs font-medium">
-                      <div></div>
-                      <div>Keyword</div>
-                      <div className="text-right">SV</div>
-                      <div className="text-right">Sales</div>
-                      <div className="text-right">CPS</div>
+      <div className="grid gap-3 lg:grid-cols-[400px_1fr] h-[calc(100vh-200px)]">
+        {/* Left: Keyword Bank - Fixed height with scroll */}
+        <div className="flex flex-col h-full overflow-hidden">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+            <Collapsible
+              open={keywordBankOpen}
+              onOpenChange={setKeywordBankOpen}
+            >
+              <Card>
+                <CollapsibleTrigger className="w-full">
+                  <CardHeader className="cursor-pointer">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-base">
+                          Keyword Bank
+                        </CardTitle>
+                      </div>
+                      <ChevronDownIcon
+                        className={`h-5 w-5 transition-transform ${
+                          keywordBankOpen ? "rotate-180" : ""
+                        }`}
+                      />
                     </div>
-                    <div className="max-h-[500px] overflow-y-auto">
-                      {sortedKeywords.map((kw, index) => {
-                        const allText =
-                          `${title} ${bullet1} ${bullet2} ${bullet3} ${bullet4} ${bullet5} ${description}`.toLowerCase();
-                        const isUsed = allText.includes(
-                          kw.phrase.toLowerCase()
-                        );
+                    <CardDescription className="text-left">
+                      {keywords.length === 0
+                        ? keywordBankOpen
+                          ? "Upload Cerebro CSV to get started"
+                          : "Click to expand and add keywords"
+                        : `${keywords.length} keywords loaded`}
+                    </CardDescription>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="space-y-4">
+                    {/* Upload Cerebro File - Show conditionally */}
+                    {isUploading ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-4 w-32" />
+                        <div className="flex gap-2">
+                          <Skeleton className="h-10 flex-1" />
+                          <Skeleton className="h-10 w-10" />
+                        </div>
+                        <div className="space-y-2 pt-2">
+                          <Skeleton className="h-3 w-48" />
+                          <Skeleton className="h-3 w-36" />
+                        </div>
+                      </div>
+                    ) : keywords.length === 0 ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input
+                            id="cerebro-upload"
+                            type="file"
+                            accept=".csv"
+                            onChange={handleFileUpload}
+                            className="flex-1"
+                          />
+                          <Button variant="outline" size="icon">
+                            <UploadIcon className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      !showUpload && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            const input = document.getElementById(
+                              "cerebro-upload-hidden"
+                            ) as HTMLInputElement;
+                            input?.click();
+                          }}
+                        >
+                          <UploadIcon className="mr-2 h-4 w-4" />
+                          Upload New File
+                        </Button>
+                      )
+                    )}
 
-                        return (
-                          <div
-                            key={index}
-                            className={`grid grid-cols-[auto_1fr_60px_60px_60px] gap-2 p-2 border-b text-xs hover:bg-muted/50 ${
-                              isUsed ? "bg-green-50" : ""
-                            }`}
+                    {/* Hidden file input for re-upload */}
+                    {keywords.length > 0 && (
+                      <Input
+                        id="cerebro-upload-hidden"
+                        type="file"
+                        accept=".csv"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                    )}
+
+                    {/* Action Buttons with Collapsible Add Keywords */}
+                    <div className="space-y-3">
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() =>
+                            setManualKeywordDialog(!manualKeywordDialog)
+                          }
+                          title="Add keywords manually"
+                        >
+                          <PencilIcon className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          onClick={handleExportKeywords}
+                          disabled={keywords.length === 0}
+                          variant="outline"
+                          className="flex-1"
+                        >
+                          <DownloadIcon className="mr-2 h-4 w-4" />
+                          Export
+                        </Button>
+                      </div>
+
+                      {/* Collapsible Add Keywords Section */}
+                      {manualKeywordDialog && (
+                        <div className="space-y-3 p-3 border rounded-lg bg-muted/30">
+                          <Label
+                            htmlFor="manual-keyword-input"
+                            className="text-sm font-medium"
                           >
-                            <Checkbox
-                              checked={kw.selected}
-                              onCheckedChange={() => toggleKeyword(kw.phrase)}
-                            />
-                            <div className="flex items-center gap-1">
-                              <span className="truncate">{kw.phrase}</span>
-                              {isUsed && (
-                                <CheckCircle2Icon className="h-3 w-3 shrink-0 text-green-600" />
-                              )}
+                            Add Keywords Manually
+                          </Label>
+                          <Textarea
+                            id="manual-keyword-input"
+                            placeholder="Enter keyword or phrase (press Enter to add)"
+                            value={manualKeyword}
+                            onChange={(e) => setManualKeyword(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleAddKeyword();
+                              }
+                            }}
+                            rows={3}
+                            className="resize-none"
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={handleAddKeyword}
+                              disabled={!manualKeyword.trim()}
+                              size="sm"
+                              className="flex-1"
+                            >
+                              <PlusIcon className="mr-2 h-4 w-4" />
+                              Add Keyword
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                setManualKeywordDialog(false);
+                                setManualKeyword("");
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Press Enter to add, Shift+Enter for new line
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Keywords List */}
+                    {isUploading ? (
+                      <div className="space-y-3 pt-4">
+                        <Skeleton className="h-4 w-40" />
+                        <div className="border rounded-lg p-4 space-y-3">
+                          {[...Array(5)].map((_, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <Skeleton className="h-4 w-4" />
+                              <Skeleton className="h-4 flex-1" />
+                              <Skeleton className="h-4 w-12" />
+                              <Skeleton className="h-4 w-12" />
+                              <Skeleton className="h-4 w-10" />
                             </div>
-                            <div className="text-right text-muted-foreground">
-                              {kw.searchVolume > 0
-                                ? kw.searchVolume >= 1000
-                                  ? `${(kw.searchVolume / 1000).toFixed(1)}k`
-                                  : kw.searchVolume
-                                : "-"}
+                          ))}
+                        </div>
+                      </div>
+                    ) : keywords.length > 0 ? (
+                      <>
+                        <div className="flex items-center justify-between pt-2">
+                          <span className="text-sm font-medium">
+                            {selectedCount} of {keywords.length} selected
+                          </span>
+                        </div>
+
+                        {/* Keywords Table with sortable headers */}
+                        <TooltipProvider>
+                          <div className="border rounded-lg">
+                            <div className="grid grid-cols-[auto_1fr_55px_50px_45px] gap-2 p-2 border-b bg-muted/50 text-xs font-medium">
+                              <div></div>
+                              <div>Keyword</div>
+                              <button
+                                onClick={() => {
+                                  setSortBy(
+                                    sortBy === "volume" ? "alpha" : "volume"
+                                  );
+                                  setCurrentPage(1);
+                                }}
+                                className="flex items-center justify-end gap-1 hover:text-foreground transition-colors"
+                              >
+                                SV
+                                <ArrowUpDownIcon className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSortBy(
+                                    sortBy === "sales" ? "alpha" : "sales"
+                                  );
+                                  setCurrentPage(1);
+                                }}
+                                className="flex items-center justify-end gap-1 hover:text-foreground transition-colors"
+                              >
+                                Sales
+                                <ArrowUpDownIcon className="h-3 w-3" />
+                              </button>
+                              <div className="text-right">CPS</div>
                             </div>
-                            <div className="text-right text-muted-foreground">
-                              {kw.sales > 0 ? kw.sales : "-"}
-                            </div>
-                            <div className="text-right text-muted-foreground">
-                              {kw.cps !== null ? kw.cps : "N/A"}
+                            <div>
+                              {paginatedKeywords.map((kw, index) => {
+                                const allText =
+                                  `${title} ${bullet1} ${bullet2} ${bullet3} ${bullet4} ${bullet5} ${description}`.toLowerCase();
+                                const isUsed = allText.includes(
+                                  kw.phrase.toLowerCase()
+                                );
+
+                                return (
+                                  <div
+                                    key={index}
+                                    className={`grid grid-cols-[auto_1fr_55px_50px_45px] gap-2 p-2 border-b text-xs hover:bg-muted/50 ${
+                                      isUsed
+                                        ? "bg-green-50 dark:bg-green-950/30"
+                                        : ""
+                                    }`}
+                                  >
+                                    <Checkbox
+                                      checked={kw.selected}
+                                      onCheckedChange={() =>
+                                        toggleKeyword(kw.phrase)
+                                      }
+                                    />
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-1 overflow-hidden">
+                                          <span className="truncate">
+                                            {kw.phrase}
+                                          </span>
+                                          {isUsed && (
+                                            <CheckCircle2Icon className="h-3 w-3 shrink-0 text-green-600" />
+                                          )}
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="top"
+                                        className="max-w-xs"
+                                      >
+                                        <p>{kw.phrase}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <div className="text-right text-muted-foreground">
+                                      {kw.searchVolume > 0
+                                        ? kw.searchVolume >= 1000
+                                          ? `${(kw.searchVolume / 1000).toFixed(
+                                              1
+                                            )}k`
+                                          : kw.searchVolume
+                                        : "-"}
+                                    </div>
+                                    <div className="text-right text-muted-foreground">
+                                      {kw.sales > 0 ? kw.sales : "-"}
+                                    </div>
+                                    <div className="text-right text-muted-foreground">
+                                      {kw.cps !== null ? kw.cps : "N/A"}
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
-                        );
-                      })}
+
+                          {/* Pagination Controls */}
+                          {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-1 p-4 border-t">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setCurrentPage(Math.max(1, currentPage - 1))
+                                }
+                                disabled={currentPage === 1}
+                                className="h-8 w-8 p-0"
+                              >
+                                ←
+                              </Button>
+
+                              {getPageNumbers().map((page, idx) => (
+                                <Button
+                                  key={idx}
+                                  variant={
+                                    page === currentPage ? "default" : "outline"
+                                  }
+                                  size="sm"
+                                  onClick={() => {
+                                    if (typeof page === "number") {
+                                      setCurrentPage(page);
+                                    }
+                                  }}
+                                  disabled={typeof page === "string"}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  {page}
+                                </Button>
+                              ))}
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setCurrentPage(
+                                    Math.min(totalPages, currentPage + 1)
+                                  )
+                                }
+                                disabled={currentPage === totalPages}
+                                className="h-8 w-8 p-0"
+                              >
+                                →
+                              </Button>
+                            </div>
+                          )}
+                        </TooltipProvider>
+                      </>
+                    ) : null}
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+
+            {/* Score Cards Below Keyword Bank */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Generated Search Volume
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold">
+                  {generatedVolume >= 1000000
+                    ? `${(generatedVolume / 1000000).toFixed(1)}M`
+                    : generatedVolume >= 1000
+                    ? `${(generatedVolume / 1000).toFixed(1)}K`
+                    : generatedVolume}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Total from used keywords
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Listing Optimization Score
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 flex-1 rounded-full bg-green-200">
+                      <div
+                        className="h-2 rounded-full bg-green-500"
+                        style={{
+                          width: `${
+                            title && description
+                              ? 80
+                              : title || description
+                              ? 40
+                              : 0
+                          }%`,
+                        }}
+                      ></div>
                     </div>
                   </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Score Cards Below Keyword Bank */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Generated Search Volume
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
-                {generatedVolume >= 1000000
-                  ? `${(generatedVolume / 1000000).toFixed(1)}M`
-                  : generatedVolume >= 1000
-                  ? `${(generatedVolume / 1000).toFixed(1)}K`
-                  : generatedVolume}
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Total from used keywords
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                Listing Optimization Score
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 flex-1 rounded-full bg-green-200">
-                    <div
-                      className="h-2 rounded-full bg-green-500"
-                      style={{
-                        width: `${
-                          title && description
-                            ? 80
-                            : title || description
-                            ? 40
-                            : 0
-                        }%`,
-                      }}
-                    ></div>
-                  </div>
+                  <p className="font-semibold text-green-600">{listingScore}</p>
                 </div>
-                <p className="font-semibold text-green-600">{listingScore}</p>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
 
-        {/* Right: Content Editor */}
-        <div className="space-y-6">
-          {/* AI Parameters - Collapsible */}
-          <Collapsible open={parametersOpen} onOpenChange={setParametersOpen}>
-            <Card className="bg-blue-50/50">
-              <CollapsibleTrigger className="w-full">
-                <CardHeader className="cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <SparklesIcon className="h-5 w-5 text-blue-600" />
-                      <CardTitle className="text-base">AI Parameters</CardTitle>
-                    </div>
-                    <ChevronDownIcon
-                      className={`h-5 w-5 transition-transform ${
-                        parametersOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  </div>
-                  <CardDescription className="text-left">
-                    {parametersOpen
-                      ? "Fill these details to give AI context for better content generation"
-                      : "Click to expand and configure AI parameters"}
-                  </CardDescription>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="space-y-4 pt-0">
-                  <div className="space-y-2">
-                    <Label>
-                      Product Characteristics *{" "}
-                      <span className="text-red-500">Required</span>
-                    </Label>
-                    <Textarea
-                      placeholder="e.g., Blue, 5G, Durable and sleek design, night mode, etc"
-                      value={productCharacteristics}
-                      onChange={(e) =>
-                        setProductCharacteristics(e.target.value)
-                      }
-                      rows={3}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {productCharacteristics.length}/1500 characters
-                    </p>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Brand Name</Label>
-                      <Input
-                        placeholder="Optional"
-                        value={brandName}
-                        onChange={(e) => setBrandName(e.target.value)}
+        {/* Right: Content Editor - Fixed height with scroll */}
+        <div className="flex flex-col h-full overflow-hidden">
+          <div className="flex-1 overflow-y-auto space-y-6 pr-2">
+            {/* AI Parameters - Collapsible */}
+            <Collapsible open={parametersOpen} onOpenChange={setParametersOpen}>
+              <Card className="border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/30">
+                <CollapsibleTrigger className="w-full">
+                  <CardHeader className="cursor-pointer">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <SparklesIcon className="h-5 w-5 text-neutral-600 dark:text-neutral-400" />
+                        <CardTitle className="text-base">
+                          AI Parameters
+                        </CardTitle>
+                      </div>
+                      <ChevronDownIcon
+                        className={`h-5 w-5 transition-transform ${
+                          parametersOpen ? "rotate-180" : ""
+                        }`}
                       />
                     </div>
+                    <CardDescription className="text-left">
+                      {parametersOpen
+                        ? "Fill these details to give AI context for better content generation"
+                        : "Click to expand and configure AI parameters"}
+                    </CardDescription>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="space-y-4 pt-0">
                     <div className="space-y-2">
-                      <Label>Show Brand Name</Label>
-                      <Select
-                        value={showBrandName}
-                        onValueChange={setShowBrandName}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="beginning">
-                            At beginning of title
-                          </SelectItem>
-                          <SelectItem value="end">At end of title</SelectItem>
-                          <SelectItem value="none">Don&apos;t show</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label>Product Name</Label>
-                      <Input
-                        placeholder="e.g., Knee Straps"
-                        value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
+                      <Label className="font-medium">
+                        Product Characteristics *{" "}
+                        <span className="text-red-600 font-semibold dark:text-red-400">
+                          Required
+                        </span>
+                      </Label>
+                      <Textarea
+                        placeholder="e.g., Blue, 5G, Durable and sleek design, night mode, etc"
+                        value={productCharacteristics}
+                        onChange={(e) =>
+                          setProductCharacteristics(e.target.value)
+                        }
+                        rows={3}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        {productCharacteristics.length}/1500 characters
+                      </p>
                     </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="font-medium">Brand Name</Label>
+                        <Input
+                          placeholder="Optional"
+                          value={brandName}
+                          onChange={(e) => setBrandName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="font-medium">Show Brand Name</Label>
+                        <Select
+                          value={showBrandName}
+                          onValueChange={setShowBrandName}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="beginning">
+                              At beginning of title
+                            </SelectItem>
+                            <SelectItem value="end">At end of title</SelectItem>
+                            <SelectItem value="none">
+                              Don&apos;t show
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label className="font-medium">Product Name</Label>
+                        <Input
+                          placeholder="e.g., Knee Straps"
+                          value={productName}
+                          onChange={(e) => setProductName(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="font-medium">Tone</Label>
+                        <Select value={tone} onValueChange={setTone}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="formal">Formal</SelectItem>
+                            <SelectItem value="casual">Casual</SelectItem>
+                            <SelectItem value="professional">
+                              Professional
+                            </SelectItem>
+                            <SelectItem value="luxury">Luxury</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
-                      <Label>Tone</Label>
-                      <Select value={tone} onValueChange={setTone}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="formal">Formal</SelectItem>
-                          <SelectItem value="casual">Casual</SelectItem>
-                          <SelectItem value="professional">
-                            Professional
-                          </SelectItem>
-                          <SelectItem value="luxury">Luxury</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label className="font-medium">Target Audience</Label>
+                      <Textarea
+                        placeholder="Enter attributes separated by commas"
+                        value={targetAudience}
+                        onChange={(e) => setTargetAudience(e.target.value)}
+                        rows={2}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {targetAudience.length}/100
+                      </p>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label>Target Audience</Label>
-                    <Textarea
-                      placeholder="Enter attributes separated by commas"
-                      value={targetAudience}
-                      onChange={(e) => setTargetAudience(e.target.value)}
-                      rows={2}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {targetAudience.length}/100
-                    </p>
-                  </div>
+                    <div className="space-y-2">
+                      <Label className="font-medium">
+                        Words & Special Characters to Avoid
+                      </Label>
+                      <Textarea
+                        placeholder="Enter words & characters separated by commas"
+                        value={avoidWords}
+                        onChange={(e) => setAvoidWords(e.target.value)}
+                        rows={2}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {avoidWords.length}/100
+                      </p>
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
 
-                  <div className="space-y-2">
-                    <Label>Words & Special Characters to Avoid</Label>
-                    <Textarea
-                      placeholder="Enter words & characters separated by commas"
-                      value={avoidWords}
-                      onChange={(e) => setAvoidWords(e.target.value)}
-                      rows={2}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {avoidWords.length}/100
-                    </p>
-                  </div>
-                </CardContent>
-              </CollapsibleContent>
-            </Card>
-          </Collapsible>
-
-          {/* Product Title */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Product Title</CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() =>
-                    generateContentMutation.mutate({ section: "title" })
-                  }
-                  disabled={generateContentMutation.isPending || !canGenerate}
-                >
-                  <SparklesIcon className="h-4 w-4" />
-                  {generateContentMutation.isPending
-                    ? "Generating..."
-                    : "Write with AI"}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Textarea
-                placeholder="Start typing content here"
-                value={title}
-                onChange={(e) => {
-                  setTitle(e.target.value);
-                  updateScore();
-                }}
-                rows={3}
-              />
-              <div className="flex items-center justify-between text-xs">
-                <span className={getCharCountColor(title.length, titleLimit)}>
-                  {title.length}/{titleLimit} characters
-                </span>
-                <span className="text-muted-foreground">
-                  Keywords used:{" "}
-                  {
-                    keywords.filter(
-                      (k) =>
-                        k.selected &&
-                        title.toLowerCase().includes(k.phrase.toLowerCase())
-                    ).length
-                  }
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Features (Bullet Points) */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">
-                  Features (Bullet Points)
-                </CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() =>
-                    generateContentMutation.mutate({ section: "bullets" })
-                  }
-                  disabled={generateContentMutation.isPending || !canGenerate}
-                >
-                  <SparklesIcon className="h-4 w-4" />
-                  {generateContentMutation.isPending
-                    ? "Generating..."
-                    : "Write with AI"}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {[
-                { value: bullet1, setter: setBullet1, label: "Feature #1" },
-                { value: bullet2, setter: setBullet2, label: "Feature #2" },
-                { value: bullet3, setter: setBullet3, label: "Feature #3" },
-                { value: bullet4, setter: setBullet4, label: "Feature #4" },
-                { value: bullet5, setter: setBullet5, label: "Feature #5" },
-              ].map((bullet, index) => (
-                <div key={index} className="space-y-2">
-                  <Label>{bullet.label}</Label>
-                  <Textarea
-                    placeholder="Start typing content here"
-                    value={bullet.value}
-                    onChange={(e) => {
-                      bullet.setter(e.target.value);
-                      updateScore();
-                    }}
-                    rows={2}
-                  />
-                  <p
-                    className={`text-xs ${getCharCountColor(
-                      bullet.value.length,
-                      bulletLimit
-                    )}`}
+            {/* Product Title */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Product Title</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() =>
+                      generateContentMutation.mutate({ section: "title" })
+                    }
+                    disabled={generateContentMutation.isPending || !canGenerate}
                   >
-                    {bullet.value.length}/{bulletLimit} characters
-                  </p>
+                    <SparklesIcon className="h-4 w-4" />
+                    {generateContentMutation.isPending
+                      ? "Generating..."
+                      : "Write with AI"}
+                  </Button>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Textarea
+                  placeholder="Start typing content here"
+                  value={title}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    updateScore();
+                  }}
+                  rows={3}
+                />
+                <div className="flex items-center justify-between text-xs">
+                  <span className={getCharCountColor(title.length, titleLimit)}>
+                    {title.length}/{titleLimit} characters
+                  </span>
+                  <span className="text-muted-foreground">
+                    Keywords used:{" "}
+                    {
+                      keywords.filter(
+                        (k) =>
+                          k.selected &&
+                          title.toLowerCase().includes(k.phrase.toLowerCase())
+                      ).length
+                    }
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
 
-          {/* Description */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Description</CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() =>
-                    generateContentMutation.mutate({ section: "description" })
-                  }
-                  disabled={generateContentMutation.isPending || !canGenerate}
+            {/* Features (Bullet Points) */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">
+                    Features (Bullet Points)
+                  </CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() =>
+                      generateContentMutation.mutate({ section: "bullets" })
+                    }
+                    disabled={generateContentMutation.isPending || !canGenerate}
+                  >
+                    <SparklesIcon className="h-4 w-4" />
+                    {generateContentMutation.isPending
+                      ? "Generating..."
+                      : "Write with AI"}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {[
+                  { value: bullet1, setter: setBullet1, label: "Feature #1" },
+                  { value: bullet2, setter: setBullet2, label: "Feature #2" },
+                  { value: bullet3, setter: setBullet3, label: "Feature #3" },
+                  { value: bullet4, setter: setBullet4, label: "Feature #4" },
+                  { value: bullet5, setter: setBullet5, label: "Feature #5" },
+                ].map((bullet, index) => (
+                  <div key={index} className="space-y-2">
+                    <Label>{bullet.label}</Label>
+                    <Textarea
+                      placeholder="Start typing content here"
+                      value={bullet.value}
+                      onChange={(e) => {
+                        bullet.setter(e.target.value);
+                        updateScore();
+                      }}
+                      rows={2}
+                    />
+                    <p
+                      className={`text-xs ${getCharCountColor(
+                        bullet.value.length,
+                        bulletLimit
+                      )}`}
+                    >
+                      {bullet.value.length}/{bulletLimit} characters
+                    </p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Description */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Description</CardTitle>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() =>
+                      generateContentMutation.mutate({ section: "description" })
+                    }
+                    disabled={generateContentMutation.isPending || !canGenerate}
+                  >
+                    <SparklesIcon className="h-4 w-4" />
+                    {generateContentMutation.isPending
+                      ? "Generating..."
+                      : "Write with AI"}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Textarea
+                  placeholder="Start typing content here"
+                  value={description}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    updateScore();
+                  }}
+                  rows={8}
+                />
+                <p
+                  className={`text-xs ${getCharCountColor(
+                    description.length,
+                    descLimit
+                  )}`}
                 >
-                  <SparklesIcon className="h-4 w-4" />
-                  {generateContentMutation.isPending
-                    ? "Generating..."
-                    : "Write with AI"}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Textarea
-                placeholder="Start typing content here"
-                value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value);
-                  updateScore();
-                }}
-                rows={8}
-              />
-              <p
-                className={`text-xs ${getCharCountColor(
-                  description.length,
-                  descLimit
-                )}`}
-              >
-                {description.length}/{descLimit} characters
-              </p>
-            </CardContent>
-          </Card>
+                  {description.length}/{descLimit} characters
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
 

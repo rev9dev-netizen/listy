@@ -597,7 +597,7 @@ export default function KeywordsPage() {
       {/* Product Info & Stats */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-6">
+          <div className="flex gap-3">
             {/* Product Image & Title */}
             <div className="flex gap-4 flex-1">
               <div className="w-20 h-20 bg-muted rounded flex items-center justify-center">

@@ -4,7 +4,7 @@
 
 ### 1. Removed Two-Tab System
 - **Old**: Tab 1 (Select Keywords) → Tab 2 (Content Editor)
-- **New**: Single page with side-by-side layout
+- **New**: Single page with side-by-side layout -test
 
 ### 2. Keyword Bank (Left Column)
 - **Upload Cerebro CSV**: File input to upload Cerebro export files
