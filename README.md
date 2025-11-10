@@ -1,4 +1,8 @@
+# Listy
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+> For a full technical overview of this application, see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
 ## Getting Started
 
