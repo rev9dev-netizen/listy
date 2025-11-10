@@ -430,6 +430,17 @@ export default function ListingBuilderPage() {
   const canGenerate =
     selectedCount > 0 && productCharacteristics.trim().length > 0;
 
+  // Calculate used keywords count
+  const usedKeywordsCount = keywords.filter((kw) => {
+    const allText =
+      `${title} ${bullet1} ${bullet2} ${bullet3} ${bullet4} ${bullet5} ${description}`.toLowerCase();
+    const escapedPhrase = kw.phrase
+      .toLowerCase()
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\b${escapedPhrase}\\b`, "g");
+    return regex.test(allText);
+  }).length;
+
   return (
     <div className="space-y-6">
       {/* Header */}
