@@ -109,6 +109,8 @@ export async function GET(request: NextRequest) {
             title: draft.title,
             bullets: draft.bullets,
             description: draft.description,
+            version: draft.version,
+            updatedAt: draft.updatedAt
         })
     } catch (error) {
         console.error('Error fetching draft:', error)
