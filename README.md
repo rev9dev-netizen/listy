@@ -174,12 +174,28 @@ Keyword Expansion:
 ## 12. Environment Variables (Expected)
 
 ```env
-DATABASE_URL=postgres://...
+# Prisma (Supabase Postgres)
+DATABASE_URL="postgresql://postgres.kdaercjabzvyagjcojif:<password>@aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres"
+
+# Supabase (public client)
+NEXT_PUBLIC_SUPABASE_URL="https://kdaercjabzvyagjcojif.supabase.co"
+NEXT_PUBLIC_SUPABASE_ANON_KEY="<anon-key>"
+
 OPENAI_API_KEY=sk-...
 UPSTASH_REDIS_REST_URL=...
 UPSTASH_REDIS_REST_TOKEN=...
 CLERK_SECRET_KEY=...
 CLERK_PUBLISHABLE_KEY=...
+```
+
+After setting envs:
+
+- Install deps: pnpm install
+- Generate Prisma client and run migrations:
+
+```bash
+pnpm dlx prisma generate
+pnpm dlx prisma migrate deploy # or migrate dev during development
 ```
 
 (Ensure all are set for production; Prisma currently uses a mock client until engines install.)
