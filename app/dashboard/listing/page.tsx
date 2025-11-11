@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,39 +33,42 @@ export default function ListingsDashboardPage() {
   const [brand, setBrand] = useState("");
   const [productType, setProductType] = useState("");
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const projectsRes = await fetch("/api/projects");
-        const pj = await projectsRes.json();
-        const summaries: ListingSummary[] = [];
-        for (const p of pj.projects || []) {
-          const draftRes = await fetch(`/api/listing/draft?projectId=${p.id}`);
-          let title = "";
-          let version = 0;
-          if (draftRes.ok) {
-            const d = await draftRes.json();
-            title = d.title || "";
-            version = d.version || 0;
-          }
-          summaries.push({
-            projectId: p.id,
-            title,
-            version,
-            marketplace: p.marketplace || "US",
-            updatedAt: new Date(p.updatedAt).toLocaleString(),
-          });
+  const load = useCallback(async () => {
+    try {
+      const projectsRes = await fetch("/api/projects");
+      const pj = await projectsRes.json();
+      const summaries: ListingSummary[] = [];
+      for (const p of pj.projects || []) {
+        const draftRes = await fetch(`/api/listing/draft?projectId=${p.id}`);
+        let title = "";
+        let version = 0;
+        let updatedAt = p.updatedAt;
+        if (draftRes.ok) {
+          const d = await draftRes.json();
+          title = d.title || "";
+          version = d.version || 0;
+          updatedAt = d.updatedAt || p.updatedAt;
         }
-        setData(summaries);
-      } catch (e) {
-        console.error("Failed to load listings dashboard", e);
-        setData([]);
-      } finally {
-        setLoading(false);
+        summaries.push({
+          projectId: p.id,
+          title,
+          version,
+          marketplace: p.marketplace || "US",
+          updatedAt: new Date(updatedAt).toLocaleString(),
+        });
       }
+      setData(summaries);
+    } catch (e) {
+      console.error("Failed to load listings dashboard", e);
+      setData([]);
+    } finally {
+      setLoading(false);
     }
-    load();
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <div className="space-y-6">
@@ -73,6 +76,15 @@ export default function ListingsDashboardPage() {
         <h1 className="text-2xl font-semibold">Listing Builder</h1>
         <div className="flex gap-2">
           <Button onClick={() => setCreateOpen(true)}>Add a Listing</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setLoading(true);
+              load();
+            }}
+          >
+            Refresh
+          </Button>
         </div>
       </div>
       <Card className="p-4">

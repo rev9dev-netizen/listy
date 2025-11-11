@@ -1,7 +1,7 @@
 "use client";
 import { useListingBuilder } from "../useListingBuilder";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ListingHeader } from "../components/ListingHeader";
 import { KeywordBank } from "../components/KeywordBank";
@@ -18,6 +18,29 @@ export default function ListingBuilderPage() {
   const builder = useListingBuilder();
   const router = useRouter();
   const [finishing, setFinishing] = useState(false);
+
+  // Ensure a project exists; if none in URL, create one and replace URL
+  useEffect(() => {
+    const ensureProject = async () => {
+      const url = new URL(window.location.href);
+      const pid = url.searchParams.get("projectId");
+      if (pid) return; // already present
+      try {
+        const res = await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ marketplace: "US" }),
+        });
+        if (!res.ok) return;
+        const pj = await res.json();
+        url.searchParams.set("projectId", pj.id);
+        router.replace(url.pathname + "?" + url.searchParams.toString());
+      } catch {
+        // ignore; user can create from dashboard
+      }
+    };
+    if (typeof window !== "undefined") ensureProject();
+  }, [router]);
 
   async function handleFinish() {
     const projectId =
@@ -49,12 +72,14 @@ export default function ListingBuilderPage() {
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to save listing");
+        throw new Error(err.error || `Finalize failed (${res.status})`);
       }
       toast.success("Listing saved");
       router.push("/dashboard/listing");
-    } catch {
-      toast.error("Could not finish. Please try again.");
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Could not finish. Please try again.";
+      toast.error(msg);
     } finally {
       setFinishing(false);
     }

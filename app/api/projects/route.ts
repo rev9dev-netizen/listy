@@ -67,22 +67,24 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        const user = await prisma.user.findUnique({
-            where: { clerkId: userId },
-            include: {
-                projects: {
-                    orderBy: {
-                        createdAt: 'desc',
-                    },
-                },
-            },
-        })
-
+        // Ensure user exists; if not, create a basic record
+        let user = await prisma.user.findUnique({ where: { clerkId: userId } })
         if (!user) {
-            return NextResponse.json({ projects: [] })
+            const clerkUser = await auth()
+            user = await prisma.user.create({
+                data: {
+                    clerkId: userId,
+                    email: (clerkUser.sessionClaims?.email as string) || 'unknown@example.com',
+                }
+            })
         }
 
-        return NextResponse.json({ projects: user.projects })
+        const projects = await prisma.project.findMany({
+            where: { userId: user.id },
+            orderBy: { createdAt: 'desc' }
+        })
+
+        return NextResponse.json({ projects })
     } catch (error) {
         console.error('Error fetching projects:', error)
         return NextResponse.json({ error: 'Failed to fetch projects' }, { status: 500 })

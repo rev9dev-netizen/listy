@@ -174,7 +174,7 @@ export function useListingBuilder() {
         autosaveRef.current = setTimeout(async () => {
             try {
                 setSaving(true)
-                await fetch(`/api/listing/draft?projectId=${projectId}`, {
+                const res = await fetch(`/api/listing/draft?projectId=${projectId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -183,9 +183,15 @@ export function useListingBuilder() {
                         description: content.description
                     })
                 })
-                setLastSavedAt(new Date())
+                if (res.ok) {
+                    setLastSavedAt(new Date())
+                } else {
+                    const err = await res.json().catch(() => ({}))
+                    // surface once while typing bursts
+                    console.warn('Autosave failed', err)
+                }
             } catch {
-                // Optional: toast.error('Autosave failed')
+                // Optional toast can be noisy during typing
             } finally {
                 setSaving(false)
             }

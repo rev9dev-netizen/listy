@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
                 const newVersion = (lastDraft?.version || 0) + 1
 
                 // Create new draft
-                await prisma.draft.create({
+                const created = await prisma.draft.create({
                     data: {
                         projectId,
                         title: draft.title,
@@ -56,9 +56,13 @@ export async function POST(request: NextRequest) {
                         version: newVersion,
                     },
                 })
+                return NextResponse.json({
+                    ...draft,
+                    version: created.version,
+                    id: created.id
+                })
             }
         }
-
         return NextResponse.json(draft)
     } catch (error) {
         console.error('Error generating listing:', error)
