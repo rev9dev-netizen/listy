@@ -14,9 +14,42 @@ import { AISuggestionDialog } from "../components/AISuggestionDialog";
 export default function ListingBuilderPage() {
   const builder = useListingBuilder();
 
+  async function handleFinish() {
+    const projectId =
+      typeof window !== "undefined"
+        ? new URL(window.location.href).searchParams.get("projectId")
+        : null;
+    if (!projectId) return;
+    const bullets = [
+      builder.content.bullet1,
+      builder.content.bullet2,
+      builder.content.bullet3,
+      builder.content.bullet4,
+      builder.content.bullet5,
+    ];
+    try {
+      await fetch("/api/listing/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          title: builder.content.title,
+          bullets,
+          description: builder.content.description,
+        }),
+      });
+    } catch {
+      // noop; hook already shows autosave
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <ListingHeader />
+      <ListingHeader
+        saving={builder.saving}
+        lastSavedAt={builder.lastSavedAt}
+        onFinish={handleFinish}
+      />
       <div className="grid gap-3 lg:grid-cols-[480px_1fr] h-[calc(100vh-180px)]">
         {/* Left pane */}
         <div className="flex flex-col h-full min-h-0">

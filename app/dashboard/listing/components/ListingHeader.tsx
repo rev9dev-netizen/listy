@@ -1,8 +1,19 @@
 "use client";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2Icon } from "lucide-react";
+import { CheckCircle2Icon, Loader2, Save } from "lucide-react";
 
-export function ListingHeader() {
+type Props = {
+  saving?: boolean;
+  lastSavedAt?: Date | null;
+  onFinish?: () => void;
+};
+
+export function ListingHeader({ saving, lastSavedAt, onFinish }: Props) {
+  const savedLabel = saving
+    ? "Saving…"
+    : lastSavedAt
+    ? `Saved ${lastSavedAt.toLocaleTimeString()}`
+    : "Saved";
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -12,9 +23,17 @@ export function ListingHeader() {
         </p>
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm">
-          <CheckCircle2Icon className="mr-2 h-4 w-4" />
-          Saved
+        <Button variant="outline" size="sm" disabled={saving}>
+          {saving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <CheckCircle2Icon className="mr-2 h-4 w-4" />
+          )}
+          {savedLabel}
+        </Button>
+        <Button size="sm" variant="outline" onClick={onFinish}>
+          <Save className="mr-2 h-4 w-4" />
+          Finish
         </Button>
         <Button size="sm" className="bg-orange-500 hover:bg-orange-600">
           Sync to Amazon
