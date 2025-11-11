@@ -1,5 +1,8 @@
 "use client";
 import { useListingBuilder } from "../useListingBuilder";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 import { ListingHeader } from "../components/ListingHeader";
 import { KeywordBank } from "../components/KeywordBank";
 import { RootKeywords } from "../components/RootKeywords";
@@ -13,13 +16,18 @@ import { AISuggestionDialog } from "../components/AISuggestionDialog";
 
 export default function ListingBuilderPage() {
   const builder = useListingBuilder();
+  const router = useRouter();
+  const [finishing, setFinishing] = useState(false);
 
   async function handleFinish() {
     const projectId =
       typeof window !== "undefined"
         ? new URL(window.location.href).searchParams.get("projectId")
         : null;
-    if (!projectId) return;
+    if (!projectId) {
+      toast.error("No project. Create or open from dashboard.");
+      return;
+    }
     const bullets = [
       builder.content.bullet1,
       builder.content.bullet2,
@@ -28,7 +36,8 @@ export default function ListingBuilderPage() {
       builder.content.bullet5,
     ];
     try {
-      await fetch("/api/listing/finalize", {
+      setFinishing(true);
+      const res = await fetch("/api/listing/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -38,8 +47,16 @@ export default function ListingBuilderPage() {
           description: builder.content.description,
         }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to save listing");
+      }
+      toast.success("Listing saved");
+      router.push("/dashboard/listing");
     } catch {
-      // noop; hook already shows autosave
+      toast.error("Could not finish. Please try again.");
+    } finally {
+      setFinishing(false);
     }
   }
 
@@ -49,6 +66,7 @@ export default function ListingBuilderPage() {
         saving={builder.saving}
         lastSavedAt={builder.lastSavedAt}
         onFinish={handleFinish}
+        finishing={finishing}
       />
       <div className="grid gap-3 lg:grid-cols-[480px_1fr] h-[calc(100vh-180px)]">
         {/* Left pane */}

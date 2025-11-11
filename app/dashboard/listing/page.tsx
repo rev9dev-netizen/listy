@@ -1,10 +1,19 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 interface ListingSummary {
   projectId: string;
@@ -18,6 +27,11 @@ export default function ListingsDashboardPage() {
   const [data, setData] = useState<ListingSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [marketplace, setMarketplace] = useState("US");
+  const [brand, setBrand] = useState("");
+  const [productType, setProductType] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -58,9 +72,7 @@ export default function ListingsDashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Listing Builder</h1>
         <div className="flex gap-2">
-          <Button asChild>
-            <Link href="/dashboard/listing/builder">Add a Listing</Link>
-          </Button>
+          <Button onClick={() => setCreateOpen(true)}>Add a Listing</Button>
         </div>
       </div>
       <Card className="p-4">
@@ -135,6 +147,76 @@ export default function ListingsDashboardPage() {
           </table>
         </div>
       </Card>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Listing</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="marketplace">Marketplace</Label>
+              <Input
+                id="marketplace"
+                value={marketplace}
+                onChange={(e) => setMarketplace(e.target.value.toUpperCase())}
+                placeholder="US"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="brand">Brand (optional)</Label>
+              <Input
+                id="brand"
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+                placeholder="Your brand"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ptype">Product Type (optional)</Label>
+              <Input
+                id="ptype"
+                value={productType}
+                onChange={(e) => setProductType(e.target.value)}
+                placeholder="e.g. Shampoo"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCreateOpen(false)}
+              disabled={creating}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                setCreating(true);
+                try {
+                  const res = await fetch("/api/projects", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ marketplace, brand, productType }),
+                  });
+                  if (!res.ok) throw new Error("Failed to create project");
+                  const pj = await res.json();
+                  toast.success("Listing created");
+                  setCreateOpen(false);
+                  router.push(`/dashboard/listing/builder?projectId=${pj.id}`);
+                } catch (e) {
+                  const msg = e instanceof Error ? e.message : "Create failed";
+                  toast.error(msg);
+                } finally {
+                  setCreating(false);
+                }
+              }}
+              disabled={creating || !marketplace.trim()}
+            >
+              {creating ? "Creating..." : "Create & Open"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

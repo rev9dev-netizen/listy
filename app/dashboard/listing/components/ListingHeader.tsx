@@ -6,9 +6,15 @@ type Props = {
   saving?: boolean;
   lastSavedAt?: Date | null;
   onFinish?: () => void;
+  finishing?: boolean;
 };
 
-export function ListingHeader({ saving, lastSavedAt, onFinish }: Props) {
+export function ListingHeader({
+  saving,
+  lastSavedAt,
+  onFinish,
+  finishing,
+}: Props) {
   const savedLabel = saving
     ? "Saving…"
     : lastSavedAt
@@ -31,9 +37,14 @@ export function ListingHeader({ saving, lastSavedAt, onFinish }: Props) {
           )}
           {savedLabel}
         </Button>
-        <Button size="sm" variant="outline" onClick={onFinish}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onFinish}
+          disabled={finishing}
+        >
           <Save className="mr-2 h-4 w-4" />
-          Finish
+          {finishing ? "Finishing…" : "Finish"}
         </Button>
         <Button size="sm" className="bg-orange-500 hover:bg-orange-600">
           Sync to Amazon
