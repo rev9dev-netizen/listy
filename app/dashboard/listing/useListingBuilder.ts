@@ -1,5 +1,5 @@
 "use client"
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { UIKeyword, SortBy, AISuggestion, ListingParameters, ListingContent, ListingMetrics } from './_types'
@@ -161,12 +161,46 @@ export function useListingBuilder() {
         }, 100)
     }
 
+    // Autosave: debounce content changes when a projectId exists in URL
+    const autosaveRef = useRef<NodeJS.Timeout | null>(null)
+    const [saving, setSaving] = useState(false)
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
+    useEffect(() => {
+        const projectId = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('projectId') : null
+        if (!projectId) return
+        const hasContent = content.title || content.description || content.bullet1 || content.bullet2 || content.bullet3 || content.bullet4 || content.bullet5
+        if (!hasContent) return
+        if (autosaveRef.current) clearTimeout(autosaveRef.current)
+        autosaveRef.current = setTimeout(async () => {
+            try {
+                setSaving(true)
+                await fetch(`/api/listing/draft?projectId=${projectId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: content.title,
+                        bullets: [content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5],
+                        description: content.description
+                    })
+                })
+                setLastSavedAt(new Date())
+            } catch {
+                // Optional: toast.error('Autosave failed')
+            } finally {
+                setSaving(false)
+            }
+        }, 1200)
+        return () => {
+            if (autosaveRef.current) clearTimeout(autosaveRef.current)
+        }
+    }, [content.title, content.description, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5])
+
     return {
         // state
         keywords, manualKeyword, bulkKeywordText, sortBy, currentPage, keywordsPerPage,
         keywordBankOpen, rootKeywordsOpen, parametersOpen, manualKeywordDialog, addKeywordsDialog, emptyStateAddOpen,
         rootWordFilter, isUploading, isAiFiltering, params, content, suggestionDialog, currentSuggestion,
-        metrics, limits, canGenerate,
+        metrics, limits, canGenerate, saving, lastSavedAt,
         // setters
         setManualKeyword, setBulkKeywordText, setSortBy, setCurrentPage, setKeywordBankOpen,
         setRootKeywordsOpen, setParametersOpen, setManualKeywordDialog, setAddKeywordsDialog, setEmptyStateAddOpen,

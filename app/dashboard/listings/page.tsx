@@ -59,7 +59,7 @@ export default function ListingsDashboardPage() {
         <h1 className="text-2xl font-semibold">Listing Builder</h1>
         <div className="flex gap-2">
           <Button asChild>
-            <Link href="/dashboard/listing/builder">Add a Listing</Link>
+            <Link href="/dashboard/listing">Add a Listing</Link>
           </Button>
         </div>
       </div>
@@ -122,7 +122,7 @@ export default function ListingsDashboardPage() {
                         variant="outline"
                         onClick={() =>
                           router.push(
-                            `/dashboard/listing/builder?projectId=${l.projectId}`
+                            `/dashboard/listing?projectId=${l.projectId}`
                           )
                         }
                       >
