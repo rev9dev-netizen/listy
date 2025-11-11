@@ -75,27 +75,54 @@ export function ListingAnalysis({ keywords, content, generatedVolume }: Props) {
   const seo = seoStrength();
   const richness = contentRichness();
 
-  // Best practice booleans
-  const bp_titleNoSymbols = !!title && !/[^\w\s-]/.test(title);
-  const bp_title150 = title.length >= 150; // 150+ true
+  // Best practice booleans (real checks)
+  // Title: no symbols or emojis (allow letters, numbers, spaces, hyphens)
+  const hasEmoji = /\p{Extended_Pictographic}/u.test(title);
+  const hasDisallowedSymbols = /[^\p{L}\p{N}\s-]/u.test(title);
+  const bp_titleNoSymbols = !!title && !hasEmoji && !hasDisallowedSymbols;
+
+  // Title: 150+ characters
+  const bp_title150 = title.trim().length >= 150;
+
+  // Title: does not repeat same word > 2 times (case-insensitive, words length >= 2)
   const bp_titleNoRepeat = (() => {
-    if (!title) return false;
-    const words = title.toLowerCase().split(/\s+/);
+    const cleaned = title
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+      .split(/\s+/)
+      .filter((w) => w.length >= 2);
+    if (cleaned.length === 0) return false;
     const counts: Record<string, number> = {};
-    for (const w of words) if (w.length > 3) counts[w] = (counts[w] || 0) + 1;
+    for (const w of cleaned) counts[w] = (counts[w] || 0) + 1;
     return !Object.values(counts).some((c) => c > 2);
   })();
-  const filledBullets = bullets.filter((b) => b.trim()).length;
+
+  // Bullets
+  const trimmedBullets = bullets.map((b) => b.trim());
+  const filledBullets = trimmedBullets.filter((b) => b.length > 0).length;
   const bp_5Bullets = filledBullets >= 5;
+
+  // 150+ characters in each bullet (only true when all 5 bullets present and each >=150)
   const bp_eachBullet150 =
-    bullets.every((b) => !b || b.length >= 150) && bullets[0].length >= 150; // require all filled >=150
-  const bp_bulletsCapitalized = bullets
-    .filter(Boolean)
-    .every((b) => /^[A-Z]/.test(b));
-  const bp_bulletsNotAllCapsNoIcons = bullets
-    .filter(Boolean)
-    .every((b) => b !== b.toUpperCase() && !/[^\w\s.,!?-]/.test(b));
-  const bp_description1000 = description.length >= 1000;
+    bp_5Bullets && trimmedBullets.every((b) => b.length >= 150);
+
+  // First letter of each bullet capitalized (Unicode upper-case letter)
+  const bp_bulletsCapitalized =
+    bp_5Bullets && trimmedBullets.every((b) => /^\p{Lu}/u.test(b));
+
+  // Bullets not all caps and contain no icons/emojis/symbolic pictographs
+  const iconRegex = /[\p{Extended_Pictographic}•★☆✓✔✦✧✪✯✰➤►■●○]/u;
+  const bp_bulletsNotAllCapsNoIcons =
+    bp_5Bullets &&
+    trimmedBullets.every((b) => {
+      const hasLetters = /[A-Za-z]/.test(b);
+      const isAllCaps = hasLetters ? b === b.toUpperCase() : false;
+      const hasIcons = iconRegex.test(b);
+      return !isAllCaps && !hasIcons;
+    });
+
+  // Description: 1000+ characters (A+ content not modeled, so check description only)
+  const bp_description1000 = description.trim().length >= 1000;
 
   return (
     <Card>

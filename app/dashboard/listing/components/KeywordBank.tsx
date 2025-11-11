@@ -1,5 +1,5 @@
 "use client";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   Card,
   CardHeader,
@@ -103,10 +103,15 @@ export function KeywordBank(props: Props) {
   const totalPages = Math.ceil(sortedKeywords.length / perPage);
   const paginated = paginate(sortedKeywords, currentPage, perPage);
 
-  // Clamp current page when keyword count or sorting changes
+  // Clamp current page when keyword count or sorting changes without triggering depth loop
+  const lastTotalPagesRef = useRef(totalPages);
   useEffect(() => {
-    if (totalPages === 0 && currentPage !== 1) setCurrentPage(1);
-    else if (currentPage > totalPages) setCurrentPage(totalPages);
+    if (lastTotalPagesRef.current !== totalPages) {
+      lastTotalPagesRef.current = totalPages;
+      const maxPage = Math.max(1, totalPages);
+      if (currentPage > maxPage) setCurrentPage(maxPage);
+      else if (currentPage < 1) setCurrentPage(1);
+    }
   }, [totalPages, currentPage, setCurrentPage]);
 
   return (
