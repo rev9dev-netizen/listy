@@ -30,8 +30,8 @@ export default function ListingsDashboardPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [marketplace, setMarketplace] = useState("US");
-  const [brand, setBrand] = useState("");
-  const [productType, setProductType] = useState("");
+  const [createMode, setCreateMode] = useState<"scratch" | "fetch">("scratch");
+  const [asin, setAsin] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -165,6 +165,53 @@ export default function ListingsDashboardPage() {
             <DialogTitle>New Listing</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {/* Mode cards */}
+            <div className="grid gap-3 md:grid-cols-2">
+              <Card
+                className={`p-4 cursor-pointer border ${
+                  createMode === "scratch"
+                    ? "border-primary ring-2 ring-primary/20"
+                    : ""
+                }`}
+                onClick={() => setCreateMode("scratch")}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="rounded-md bg-primary/10 p-2">
+                    {/* icon */}
+                    <span className="block h-5 w-5">📝</span>
+                  </div>
+                  <div>
+                    <div className="font-medium">Create from scratch</div>
+                    <div className="text-sm text-muted-foreground">
+                      Start with a blank listing and add content and keywords.
+                    </div>
+                  </div>
+                </div>
+              </Card>
+              <Card
+                className={`p-4 cursor-pointer border ${
+                  createMode === "fetch"
+                    ? "border-primary ring-2 ring-primary/20"
+                    : ""
+                }`}
+                onClick={() => setCreateMode("fetch")}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="rounded-md bg-primary/10 p-2">
+                    {/* icon */}
+                    <span className="block h-5 w-5">🛒</span>
+                  </div>
+                  <div>
+                    <div className="font-medium">Fetch from Amazon</div>
+                    <div className="text-sm text-muted-foreground">
+                      Import an existing listing by ASIN, then optimize it.
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Inputs */}
             <div className="space-y-1">
               <Label htmlFor="marketplace">Marketplace</Label>
               <Input
@@ -174,24 +221,17 @@ export default function ListingsDashboardPage() {
                 placeholder="US"
               />
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="brand">Brand (optional)</Label>
-              <Input
-                id="brand"
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                placeholder="Your brand"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="ptype">Product Type (optional)</Label>
-              <Input
-                id="ptype"
-                value={productType}
-                onChange={(e) => setProductType(e.target.value)}
-                placeholder="e.g. Shampoo"
-              />
-            </div>
+            {createMode === "fetch" && (
+              <div className="space-y-1">
+                <Label htmlFor="asin">ASIN</Label>
+                <Input
+                  id="asin"
+                  value={asin}
+                  onChange={(e) => setAsin(e.target.value.toUpperCase().trim())}
+                  placeholder="e.g. B0ABCDE123"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button
@@ -208,10 +248,30 @@ export default function ListingsDashboardPage() {
                   const res = await fetch("/api/projects", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ marketplace, brand, productType }),
+                    body: JSON.stringify({ marketplace }),
                   });
                   if (!res.ok) throw new Error("Failed to create project");
                   const pj = await res.json();
+
+                  // If fetch mode, import initial content from Amazon using ASIN
+                  if (createMode === "fetch") {
+                    if (!asin) throw new Error("Please provide an ASIN");
+                    const importRes = await fetch("/api/listing/import", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        projectId: pj.id,
+                        asin,
+                        marketplace,
+                      }),
+                    });
+                    if (!importRes.ok) {
+                      const { error } = await importRes
+                        .json()
+                        .catch(() => ({ error: "Import failed" }));
+                      throw new Error(error || "Failed to import listing");
+                    }
+                  }
                   toast.success("Listing created");
                   setCreateOpen(false);
                   router.push(`/dashboard/listing/builder?projectId=${pj.id}`);
@@ -222,9 +282,17 @@ export default function ListingsDashboardPage() {
                   setCreating(false);
                 }
               }}
-              disabled={creating || !marketplace.trim()}
+              disabled={
+                creating ||
+                !marketplace.trim() ||
+                (createMode === "fetch" && asin.trim().length === 0)
+              }
             >
-              {creating ? "Creating..." : "Create & Open"}
+              {creating
+                ? "Creating..."
+                : createMode === "fetch"
+                ? "Start Optimizing"
+                : "Get Started"}
             </Button>
           </DialogFooter>
         </DialogContent>

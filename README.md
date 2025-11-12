@@ -186,6 +186,7 @@ UPSTASH_REDIS_REST_URL=...
 UPSTASH_REDIS_REST_TOKEN=...
 CLERK_SECRET_KEY=...
 CLERK_PUBLISHABLE_KEY=...
+SERPAPI_KEY=...
 ```
 
 After setting envs:
@@ -211,6 +212,10 @@ Development:
 Testing (future): Add unit tests for services (keyword scoring, clustering, validation).
 
 Lint: `pnpm lint` (ESLint config uses Next core-web-vitals + TS rules).
+
+### Amazon Import (SerpApi)
+
+The Listing Builder supports creating a listing by fetching an existing Amazon product by ASIN via SerpApi. Set `SERPAPI_KEY` in your `.env.local`. In the UI, choose "Fetch from Amazon" when creating a listing and enter an ASIN. We will fetch title, up to 5 bullet points, and a description and store them as version 1. Subsequent unchanged imports are deduped via content hash.
 
 ## 14. Deployment Considerations
 
