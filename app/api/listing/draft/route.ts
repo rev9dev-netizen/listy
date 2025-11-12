@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -113,6 +114,7 @@ export async function GET(request: NextRequest) {
             title: draft.title,
             bullets: draft.bullets,
             description: draft.description,
+            keywords: draft.keywords || [],
             version: draft.version,
             updatedAt: draft.updatedAt
         })
@@ -139,6 +141,13 @@ export async function PATCH(request: NextRequest) {
             bullets?: string[]
             description?: string
             backendTerms?: string | null
+            keywords?: Array<{
+                phrase: string
+                searchVolume: number
+                sales: number
+                cps: number | null
+                selected: boolean
+            }>
         }
 
         // Verify ownership and get latest draft
@@ -148,33 +157,36 @@ export async function PATCH(request: NextRequest) {
         })
         if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
-        if (project.drafts.length === 0) {
-            // If no draft exists yet, create version 1
-            const created = await prisma.draft.create({
+        // Ensure or create a single editing draft (finalized=false) not tied to versioning
+        let editing = await prisma.draft.findFirst({ where: { projectId, finalized: false } })
+        if (!editing) {
+            const lastFinal = await prisma.draft.findFirst({ where: { projectId, finalized: true }, orderBy: { version: 'desc' } })
+            editing = await prisma.draft.create({
                 data: {
                     projectId,
-                    title: body.title ?? '',
-                    bullets: body.bullets ?? [],
-                    description: body.description ?? '',
-                    backendTerms: body.backendTerms ?? null,
-                    version: 1,
-                },
+                    title: body.title ?? (lastFinal?.title ?? ''),
+                    bullets: (body.bullets ?? (lastFinal?.bullets as any) ?? []),
+                    description: body.description ?? (lastFinal?.description ?? ''),
+                    backendTerms: body.backendTerms ?? (lastFinal?.backendTerms ?? null),
+                    keywords: (body.keywords ?? (lastFinal?.keywords as any) ?? []),
+                    finalized: false,
+                    version: (lastFinal?.version ?? 0) // version is irrelevant for editing
+                }
             })
-            return NextResponse.json({ id: created.id, version: created.version })
+        } else {
+            editing = await prisma.draft.update({
+                where: { id: editing.id },
+                data: {
+                    title: body.title ?? editing.title,
+                    bullets: (body.bullets ?? editing.bullets) as unknown as object,
+                    description: body.description ?? editing.description,
+                    backendTerms: (body.backendTerms ?? editing.backendTerms) as unknown as string | null,
+                    keywords: (body.keywords ?? editing.keywords) as unknown as object,
+                }
+            })
         }
 
-        const latest = project.drafts[0]
-        const updated = await prisma.draft.update({
-            where: { id: latest.id },
-            data: {
-                title: body.title ?? latest.title,
-                bullets: (body.bullets ?? latest.bullets) as unknown as object,
-                description: body.description ?? latest.description,
-                backendTerms: (body.backendTerms ?? latest.backendTerms) as unknown as string | null,
-            },
-        })
-
-        return NextResponse.json({ id: updated.id, version: updated.version })
+        return NextResponse.json({ id: editing.id, version: editing.version })
     } catch (error) {
         console.error('Error updating draft:', error)
         return NextResponse.json({ error: 'Failed to update draft' }, { status: 500 })

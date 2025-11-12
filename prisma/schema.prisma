@@ -76,6 +76,9 @@ model Draft {
   bullets      Json // Array of bullet points
   description  String   @db.Text
   backendTerms String?  @db.Text
+  keywords     Json?    @default("[]") // Array of UIKeyword objects from Cerebro
+  finalized    Boolean  @default(true) // true = immutable snapshot, false = active editing draft
+  contentHash  String?  // sha256 of normalized content+keywords for dedupe
   version      Int      @default(1)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

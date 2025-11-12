@@ -1,7 +1,7 @@
 "use client";
 import { useListingBuilder } from "../useListingBuilder";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, useRef } from "react";
 import { toast } from "sonner";
 import { ListingHeader } from "../components/ListingHeader";
 import { KeywordBank } from "../components/KeywordBank";
@@ -17,7 +17,9 @@ import { AISuggestionDialog } from "../components/AISuggestionDialog";
 export default function ListingBuilderPage() {
   const builder = useListingBuilder();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [finishing, setFinishing] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   // Ensure a project exists; if none in URL, create one and replace URL
   useEffect(() => {
@@ -41,6 +43,53 @@ export default function ListingBuilderPage() {
     };
     if (typeof window !== "undefined") ensureProject();
   }, [router]);
+
+  // Load existing draft content when projectId is present (only once)
+  useEffect(() => {
+    const projectId = searchParams.get("projectId");
+    if (!projectId || hasLoadedRef.current) return;
+
+    const loadDraft = async () => {
+      try {
+        const res = await fetch(`/api/listing/draft?projectId=${projectId}`);
+        if (!res.ok) return; // No draft yet, that's ok
+
+        const draft = await res.json();
+        console.log("Loaded draft:", draft); // Debug log
+        console.log("Draft keywords:", draft.keywords); // Debug keywords specifically
+
+        // Load content into builder
+        const bullets = Array.isArray(draft.bullets) ? draft.bullets : [];
+        builder.setContent({
+          title: draft.title || "",
+          bullet1: bullets[0] || "",
+          bullet2: bullets[1] || "",
+          bullet3: bullets[2] || "",
+          bullet4: bullets[3] || "",
+          bullet5: bullets[4] || "",
+          description: draft.description || "",
+        });
+
+        // Load keywords into builder
+        if (Array.isArray(draft.keywords) && draft.keywords.length > 0) {
+          console.log(
+            "Loading keywords:",
+            draft.keywords.length,
+            draft.keywords
+          ); // Debug log with actual data
+          builder.setKeywords(draft.keywords);
+        } else {
+          console.log("No keywords to load or invalid format:", draft.keywords);
+        }
+        hasLoadedRef.current = true;
+      } catch (err) {
+        console.error("Failed to load draft:", err);
+      }
+    };
+
+    loadDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   async function handleFinish() {
     const projectId =
@@ -68,6 +117,7 @@ export default function ListingBuilderPage() {
           title: builder.content.title,
           bullets,
           description: builder.content.description,
+          keywords: builder.keywords,
         }),
       });
       if (!res.ok) {

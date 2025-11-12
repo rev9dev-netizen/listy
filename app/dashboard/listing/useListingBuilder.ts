@@ -168,20 +168,24 @@ export function useListingBuilder() {
     useEffect(() => {
         const projectId = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('projectId') : null
         if (!projectId) return
-        const hasContent = content.title || content.description || content.bullet1 || content.bullet2 || content.bullet3 || content.bullet4 || content.bullet5
+        const hasContent = content.title || content.description || content.bullet1 || content.bullet2 || content.bullet3 || content.bullet4 || content.bullet5 || keywords.length > 0
         if (!hasContent) return
         if (autosaveRef.current) clearTimeout(autosaveRef.current)
         autosaveRef.current = setTimeout(async () => {
             try {
                 setSaving(true)
+                console.log('Autosaving with keywords:', keywords.length, keywords.slice(0, 3)) // Debug log with sample
+                const payload = {
+                    title: content.title,
+                    bullets: [content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5],
+                    description: content.description,
+                    keywords: keywords
+                }
+                console.log('Autosave payload:', payload) // Debug full payload
                 const res = await fetch(`/api/listing/draft?projectId=${projectId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: content.title,
-                        bullets: [content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5],
-                        description: content.description
-                    })
+                    body: JSON.stringify(payload)
                 })
                 if (res.ok) {
                     setLastSavedAt(new Date())
@@ -199,7 +203,7 @@ export function useListingBuilder() {
         return () => {
             if (autosaveRef.current) clearTimeout(autosaveRef.current)
         }
-    }, [content.title, content.description, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5])
+    }, [content.title, content.description, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5, keywords])
 
     return {
         // state
