@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import {
     fetchKeywordIntersections,
+    fetchRankedKeywords,
     type KeywordIntersectionItem
 } from '@/lib/dataforseo'
 import { cache } from '@/lib/redis'
@@ -51,13 +52,68 @@ export async function POST(req: NextRequest) {
         console.log(`Fetching keyword intersections for ${asins.length} ASIN(s)...`)
 
         const cacheKey = `cerebro:intersect:${marketplace}:${asins.sort().join(',')}`
-        let intersectionItems = await cache.get<KeywordIntersectionItem[]>(cacheKey)
+        let intersectionItems: KeywordIntersectionItem[] = await cache.get<KeywordIntersectionItem[]>(cacheKey) || []
 
-        if (!intersectionItems) {
-            console.log(`Cache miss, fetching from DataForSEO product_keyword_intersections...`)
-            // Use 'union' mode to get keywords for ANY of the ASINs (like Cerebro does)
-            intersectionItems = await fetchKeywordIntersections(asins, marketplace, 1000, 'union')
-            console.log(`Fetched ${intersectionItems.length} keyword intersections`)
+        if (intersectionItems.length === 0) {
+            console.log(`Cache miss, fetching from DataForSEO...`)
+
+            try {
+                // Try product_keyword_intersections first (more comprehensive)
+                // Use 'intersect' for single ASIN, 'union' for multiple ASINs
+                const mode = asins.length === 1 ? 'intersect' : 'union'
+                console.log(`Trying product_keyword_intersections with mode: ${mode}...`)
+                intersectionItems = await fetchKeywordIntersections(asins, marketplace, 1000, mode)
+                console.log(`✓ Fetched ${intersectionItems.length} keyword intersections`)
+
+                // If product_keyword_intersections returns 0 results, use fallback
+                if (intersectionItems.length === 0) {
+                    throw new Error('product_keyword_intersections returned 0 results')
+                }
+            } catch (error) {
+                console.error(`✗ product_keyword_intersections failed:`, error)
+                console.log(`Falling back to ranked_keywords endpoint...`)
+
+                // Fallback: Use ranked_keywords for each ASIN
+                const allRankedItems: KeywordIntersectionItem[] = []
+                for (const asin of asins) {
+                    try {
+                        const rankedItems = await fetchRankedKeywords(asin, marketplace, 1000)
+                        console.log(`✓ Fetched ${rankedItems.length} ranked keywords for ${asin}`)
+
+                        // Convert RankedKeywordItem to KeywordIntersectionItem format
+                        const converted: KeywordIntersectionItem[] = rankedItems.map((item) => {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const serpItem = item.ranked_serp_element?.serp_item as any // DataForSEO has additional fields
+                            return {
+                                keyword_data: item.keyword_data,
+                                intersection_result: {
+                                    [String(asins.indexOf(asin) + 1)]: {
+                                        se_type: serpItem?.type,
+                                        type: serpItem?.type,
+                                        rank_absolute: serpItem?.rank_absolute,
+                                        rank_group: serpItem?.rank_group,
+                                        is_paid: serpItem?.is_paid,
+                                        title: serpItem?.title,
+                                        url: serpItem?.url,
+                                        asin: serpItem?.asin || asin,
+                                        image_url: serpItem?.image_url,
+                                        price_from: serpItem?.price?.current,
+                                        rating: serpItem?.rating,
+                                    }
+                                }
+                            }
+                        })
+
+                        allRankedItems.push(...converted)
+                    } catch (asinError) {
+                        console.error(`Failed to fetch keywords for ${asin}:`, asinError)
+                    }
+                }
+
+                intersectionItems = allRankedItems
+                console.log(`✓ Total keywords from fallback: ${intersectionItems.length}`)
+            }
+
             if (intersectionItems.length > 0) {
                 await cache.set(cacheKey, intersectionItems, 3600) // 1 hour cache
             }
@@ -75,29 +131,31 @@ export async function POST(req: NextRequest) {
         const now = new Date()
         const thirtyDaysAgo = new Date()
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-        
+
         console.log(`Filtering keywords updated between ${thirtyDaysAgo.toISOString().split('T')[0]} and ${now.toISOString().split('T')[0]}`)
-        
+
+        let debugCount = 0;
         const recentItems = intersectionItems.filter(item => {
             const lastUpdated = item.keyword_data?.keyword_info?.last_updated_time
             if (!lastUpdated) {
                 // If no update time, we'll skip it to ensure data freshness
                 return false
             }
-            
+
             const updateDate = new Date(lastUpdated)
             const isRecent = updateDate >= thirtyDaysAgo && updateDate <= now
-            
+
             // Log first few filtered keywords for debugging
-            if (recentItems.length < 3) {
-                console.log(`  Keyword "${item.keyword_data?.keyword}": updated ${lastUpdated} - ${isRecent ? 'INCLUDED' : 'EXCLUDED'}`)
+            if (debugCount < 3 && isRecent) {
+                console.log(`  Keyword "${item.keyword_data?.keyword}": updated ${lastUpdated} - INCLUDED`)
+                debugCount++;
             }
-            
+
             return isRecent
         })
-        
+
         console.log(`Filtered to ${recentItems.length} keywords updated in the last 30 days (from ${intersectionItems.length} total)`)
-        
+
         if (recentItems.length === 0) {
             console.warn('No keywords found with updates in the last 30 days!')
         }
@@ -243,9 +301,24 @@ export async function POST(req: NextRequest) {
         }
 
         // Product info summary
+        // Extract product image from the first keyword's intersection result
+        let productImage = '/placeholder-product.jpg';
+        let productTitle = `Analysis of ${asins.length} ASIN${asins.length > 1 ? 's' : ''}: ${asins.join(', ')}`;
+
+        if (recentItems.length > 0 && recentItems[0].intersection_result) {
+            const firstResult = Object.values(recentItems[0].intersection_result)[0];
+            if (firstResult?.image_url) {
+                productImage = firstResult.image_url;
+            }
+            if (firstResult?.title) {
+                productTitle = firstResult.title;
+            }
+        }
+
         const productInfo = {
-            title: `Analysis of ${asins.length} ASIN${asins.length > 1 ? 's' : ''}: ${asins.join(', ')}`,
-            image: '/placeholder-product.jpg',
+            title: productTitle,
+            image: productImage,
+            asin: asins[0], // Include first ASIN for product link
             total_keywords: formattedKeywords.length,
             organic_keywords: formattedKeywords.filter((k) => k.organic_rank !== null).length,
             paid_keywords: formattedKeywords.filter((k) => k.sponsored_rank !== null).length,

@@ -349,23 +349,34 @@ export async function fetchKeywordIntersections(asins: string[], marketplace = '
     const { location_code, language_code } = resolveLocationAndLanguage(marketplace)
     const asinObj: Record<string, string> = {}
     asins.forEach((a, i) => { asinObj[String(i + 1)] = a })
+
+    const payload = [
+        {
+            asins: asinObj,
+            location_code,
+            language_code,
+            intersection_mode: mode,
+            limit,
+        },
+    ]
+
+    console.log('fetchKeywordIntersections payload:', JSON.stringify(payload, null, 2))
+
     const r = await fetch(`${D4S_LABS}/amazon/product_keyword_intersections/live`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: authHeader() },
-        body: JSON.stringify([
-            {
-                asins: asinObj,
-                location_code,
-                language_code,
-                intersection_mode: mode,
-                limit,
-            },
-        ]),
+        body: JSON.stringify(payload),
         cache: 'no-store',
     })
     if (!r.ok) throw new Error(`keyword_intersections failed: ${r.status}`)
     const j = await r.json()
+
+    console.log('fetchKeywordIntersections response:', JSON.stringify(j, null, 2).substring(0, 1000))
+
     const items: KeywordIntersectionItem[] | undefined = j?.tasks?.[0]?.result?.[0]?.items
+    const totalCount = j?.tasks?.[0]?.result?.[0]?.total_count
+    console.log(`fetchKeywordIntersections: Got ${items?.length || 0} items, total_count: ${totalCount}`)
+
     return items || []
 }
 

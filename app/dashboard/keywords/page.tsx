@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -23,15 +23,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Loader2Icon,
   SearchIcon,
   FilterIcon,
-  DownloadIcon,
-  SettingsIcon,
-  InfoIcon,
+  ExternalLinkIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  RefreshCwIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import Image from "next/image";
 
 interface Keyword {
   phrase: string;
@@ -42,27 +45,45 @@ interface Keyword {
   match_type: string;
 }
 
+interface ProductInfo {
+  title: string;
+  image: string;
+  asin?: string;
+  total_keywords: number;
+  organic_keywords: number;
+  paid_keywords: number;
+  amazon_recommended: number;
+  total_search_volume: number;
+  avg_search_volume: number;
+}
+
+interface SearchHistory {
+  id: string;
+  asins: string[];
+  marketplace: string;
+  timestamp: Date;
+  keywords: Keyword[];
+  productInfo: ProductInfo;
+}
+
 export default function KeywordsPage() {
-  // Stage 1: Initial form
-  const [showResults, setShowResults] = useState(false);
+  // Search state
   const [marketplace, setMarketplace] = useState("www.amazon.com");
   const [asinInput, setAsinInput] = useState("");
-  const [excludeVariations, setExcludeVariations] = useState(false);
 
-  // Stage 2: Results with filters
+  // Results state
   const [keywords, setKeywords] = useState<Keyword[]>([]);
-  const [productInfo, setProductInfo] = useState({
-    title: "",
-    image: "",
-    total_keywords: 0,
-    organic_keywords: 0,
-    paid_keywords: 0,
-    amazon_recommended: 0,
-    total_search_volume: 0,
-    avg_search_volume: 0,
-  });
+  const [productInfo, setProductInfo] = useState<ProductInfo | null>(null);
 
-  // Filters
+  // History state
+  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
+  const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
+    null
+  );
+
+  // Filter state
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isApplyingFilter, setIsApplyingFilter] = useState(false);
   const [wordCountMin, setWordCountMin] = useState("");
   const [wordCountMax, setWordCountMax] = useState("");
   const [searchVolumeMin, setSearchVolumeMin] = useState("");
@@ -71,12 +92,15 @@ export default function KeywordsPage() {
   const [organicRankMax, setOrganicRankMax] = useState("");
   const [sponsoredRankMin, setSponsoredRankMin] = useState("");
   const [sponsoredRankMax, setSponsoredRankMax] = useState("");
-  const [matchType, setMatchType] = useState("None selected");
+  const [matchType, setMatchType] = useState("all");
   const [phrasesContaining, setPhrasesContaining] = useState("");
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   const generateMutation = useMutation({
     mutationFn: async (asins: string[]) => {
-      // Parse marketplace correctly
       let marketplaceCode = "US";
       if (marketplace.includes("amazon.ca")) marketplaceCode = "CA";
       else if (marketplace.includes("amazon.com.mx")) marketplaceCode = "MX";
@@ -87,41 +111,42 @@ export default function KeywordsPage() {
       else if (marketplace.includes("amazon.co.uk")) marketplaceCode = "UK";
       else if (marketplace.includes("amazon.co.jp")) marketplaceCode = "JP";
 
-      console.log("Sending to API:", { asins, marketplace: marketplaceCode });
-
       const response = await fetch("/api/keywords/cerebro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          asins,
-          marketplace: marketplaceCode,
-        }),
+        body: JSON.stringify({ asins, marketplace: marketplaceCode }),
       });
+
       if (!response.ok) {
         const err = await response
           .json()
           .catch(() => ({ error: "Request failed" }));
         throw new Error(err.error || "Failed to generate keywords");
       }
+
       return response.json();
     },
-    onSuccess: (data) => {
-      setKeywords(data.keywords || []);
-      setProductInfo(
-        data.productInfo || {
-          title: "Product Analysis",
-          image: "/placeholder-product.jpg",
-          total_keywords: 0,
-          organic_keywords: 0,
-          paid_keywords: 0,
-          amazon_recommended: 0,
-          total_search_volume: 0,
-          avg_search_volume: 0,
-        }
-      );
-      setShowResults(true);
+    onSuccess: (data, asins) => {
+      const newHistory: SearchHistory = {
+        id: Date.now().toString(),
+        asins,
+        marketplace,
+        timestamp: new Date(),
+        keywords: data.keywords || [],
+        productInfo: {
+          ...data.productInfo,
+          asin: asins[0], // Store first ASIN for product link
+        },
+      };
+
+      setSearchHistory((prev) => [newHistory, ...prev.slice(0, 9)]); // Keep last 10
+      setSelectedHistoryId(newHistory.id);
+      setKeywords(newHistory.keywords);
+      setProductInfo(newHistory.productInfo);
+      setCurrentPage(1);
+
       toast.success(
-        `Fetched ${data.keywords?.length || 0} real keywords from DataForSEO!`
+        `Fetched ${data.keywords?.length || 0} keywords from DataForSEO!`
       );
     },
     onError: (error: Error) => {
@@ -129,7 +154,7 @@ export default function KeywordsPage() {
     },
   });
 
-  const handleSearch = () => {
+  const handleSearch = (useHistory = false) => {
     const asins = asinInput
       .split(/[\n,\s]/)
       .map((s) => s.trim())
@@ -145,566 +170,632 @@ export default function KeywordsPage() {
       return;
     }
 
-    generateMutation.mutate(asins);
+    // Check if this ASIN combo exists in history
+    const existingHistory = searchHistory.find(
+      (h) =>
+        JSON.stringify(h.asins.sort()) === JSON.stringify(asins.sort()) &&
+        h.marketplace === marketplace
+    );
+
+    if (existingHistory && useHistory) {
+      setSelectedHistoryId(existingHistory.id);
+      setKeywords(existingHistory.keywords);
+      setProductInfo(existingHistory.productInfo);
+      setCurrentPage(1);
+      toast.info("Loaded from history");
+    } else {
+      generateMutation.mutate(asins);
+    }
   };
 
-  const filteredKeywords = keywords.filter((k) => {
-    const wordCount = k.phrase.split(" ").length;
-    if (wordCountMin && wordCount < parseInt(wordCountMin)) return false;
-    if (wordCountMax && wordCount > parseInt(wordCountMax)) return false;
-    if (searchVolumeMin && k.search_volume < parseInt(searchVolumeMin))
-      return false;
-    if (searchVolumeMax && k.search_volume > parseInt(searchVolumeMax))
-      return false;
-    if (
-      organicRankMin &&
-      (!k.organic_rank || k.organic_rank < parseInt(organicRankMin))
-    )
-      return false;
-    if (
-      organicRankMax &&
-      (!k.organic_rank || k.organic_rank > parseInt(organicRankMax))
-    )
-      return false;
-    if (
-      phrasesContaining &&
-      !k.phrase.toLowerCase().includes(phrasesContaining.toLowerCase())
-    )
-      return false;
-    if (
-      matchType &&
-      matchType !== "None selected" &&
-      k.match_type !== matchType
-    )
-      return false;
-    return true;
-  });
+  const loadFromHistory = (historyId: string) => {
+    const history = searchHistory.find((h) => h.id === historyId);
+    if (history) {
+      setSelectedHistoryId(historyId);
+      setKeywords(history.keywords);
+      setProductInfo(history.productInfo);
+      setAsinInput(history.asins.join(", "));
+      setMarketplace(history.marketplace);
+      setCurrentPage(1);
+      toast.info("Loaded from history");
+    }
+  };
 
-  // Stage 1: Initial Search Form
-  if (!showResults) {
-    return (
-      <div className="max-w-full mx-auto space-y-6 py-8">
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl text-left font-bold">Reverse ASIN Lookup</h1>
-          <p className="text-muted-foreground text-left">
+  // Apply filters with loading state
+  const applyFilters = () => {
+    setIsApplyingFilter(true);
+    setTimeout(() => {
+      setIsApplyingFilter(false);
+      setCurrentPage(1);
+    }, 300);
+  };
+
+  // Filtered keywords
+  const filteredKeywords = useMemo(() => {
+    return keywords.filter((k) => {
+      const wordCount = k.phrase.split(" ").length;
+      if (wordCountMin && wordCount < parseInt(wordCountMin)) return false;
+      if (wordCountMax && wordCount > parseInt(wordCountMax)) return false;
+      if (searchVolumeMin && k.search_volume < parseInt(searchVolumeMin))
+        return false;
+      if (searchVolumeMax && k.search_volume > parseInt(searchVolumeMax))
+        return false;
+      if (
+        organicRankMin &&
+        (!k.organic_rank || k.organic_rank < parseInt(organicRankMin))
+      )
+        return false;
+      if (
+        organicRankMax &&
+        (!k.organic_rank || k.organic_rank > parseInt(organicRankMax))
+      )
+        return false;
+      if (
+        sponsoredRankMin &&
+        (!k.sponsored_rank || k.sponsored_rank < parseInt(sponsoredRankMin))
+      )
+        return false;
+      if (
+        sponsoredRankMax &&
+        (!k.sponsored_rank || k.sponsored_rank > parseInt(sponsoredRankMax))
+      )
+        return false;
+      if (
+        phrasesContaining &&
+        !k.phrase.toLowerCase().includes(phrasesContaining.toLowerCase())
+      )
+        return false;
+      if (matchType && matchType !== "all" && k.match_type !== matchType)
+        return false;
+      return true;
+    });
+  }, [
+    keywords,
+    wordCountMin,
+    wordCountMax,
+    searchVolumeMin,
+    searchVolumeMax,
+    organicRankMin,
+    organicRankMax,
+    sponsoredRankMin,
+    sponsoredRankMax,
+    phrasesContaining,
+    matchType,
+  ]);
+
+  // Paginated keywords
+  const paginatedKeywords = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredKeywords.slice(startIndex, endIndex);
+  }, [filteredKeywords, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil(filteredKeywords.length / itemsPerPage);
+
+  const getMarketplaceDomain = () => {
+    let domain = "amazon.com";
+    if (marketplace.includes("amazon.ca")) domain = "amazon.ca";
+    else if (marketplace.includes("amazon.com.mx")) domain = "amazon.com.mx";
+    else if (marketplace.includes("amazon.de")) domain = "amazon.de";
+    else if (marketplace.includes("amazon.es")) domain = "amazon.es";
+    else if (marketplace.includes("amazon.it")) domain = "amazon.it";
+    else if (marketplace.includes("amazon.fr")) domain = "amazon.fr";
+    else if (marketplace.includes("amazon.co.uk")) domain = "amazon.co.uk";
+    else if (marketplace.includes("amazon.co.jp")) domain = "amazon.co.jp";
+    return domain;
+  };
+
+  return (
+    <div className="container mx-auto py-6 space-y-6">
+      {/* Header with Search */}
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-3xl font-bold">Reverse ASIN Lookup</h1>
+          <p className="text-muted-foreground">
             Enter up to 10 product identifiers to find their top performing
-            keywords.
+            keywords (Last 30 days data)
           </p>
         </div>
 
+        {/* Search Bar - Always visible */}
         <Card>
-          <CardContent className="pt-6 space-y-4">
-            {/* Marketplace Selector & ASIN Input */}
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 min-w-[200px]">
-                <div className="w-8 h-6 bg-blue-500 rounded flex items-center justify-center text-white text-xs font-bold">
-                  🇺🇸
-                </div>
+          <CardContent className="">
+            <div className="flex items-start gap-4">
+              {/* Marketplace Selector */}
+              <div className="">
                 <Select value={marketplace} onValueChange={setMarketplace}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="www.amazon.com">
-                      🇺🇸 www.amazon.com
-                    </SelectItem>
-                    <SelectItem value="www.amazon.ca">
-                      🇨🇦 www.amazon.ca
-                    </SelectItem>
-                    <SelectItem value="www.amazon.com.mx">
-                      🇲🇽 www.amazon.com.mx
-                    </SelectItem>
-                    <SelectItem value="www.amazon.de">
-                      🇩🇪 www.amazon.de
-                    </SelectItem>
-                    <SelectItem value="www.amazon.es">
-                      🇪🇸 www.amazon.es
-                    </SelectItem>
-                    <SelectItem value="www.amazon.it">
-                      🇮🇹 www.amazon.it
-                    </SelectItem>
-                    <SelectItem value="www.amazon.fr">
-                      🇫🇷 www.amazon.fr
-                    </SelectItem>
+                    <SelectItem value="www.amazon.com">🇺🇸 US</SelectItem>
+                    <SelectItem value="www.amazon.ca">🇨🇦 CA</SelectItem>
+                    <SelectItem value="www.amazon.com.mx">🇲🇽 MX</SelectItem>
+                    <SelectItem value="www.amazon.de">🇩🇪 DE</SelectItem>
+                    <SelectItem value="www.amazon.es">🇪🇸 ES</SelectItem>
+                    <SelectItem value="www.amazon.it">🇮🇹 IT</SelectItem>
+                    <SelectItem value="www.amazon.fr">🇫🇷 FR</SelectItem>
+                    <SelectItem value="www.amazon.co.uk">🇬🇧 UK</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               {/* ASIN Input */}
-              <div className="flex-1">
-                <Textarea
-                  placeholder="Enter up to 10 product identifiers for keyword comparison"
-                  value={asinInput}
-                  onChange={(e) => setAsinInput(e.target.value)}
-                  rows={1}
-                  className="resize-none"
-                />
-              </div>
+              <Textarea
+                placeholder="Enter ASINs (comma or newline separated)"
+                value={asinInput}
+                onChange={(e) => setAsinInput(e.target.value)}
+                rows={2}
+                className="flex-1"
+              />
 
               {/* Search Buttons */}
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2">
                 <Button
-                  onClick={handleSearch}
+                  onClick={() => handleSearch(false)}
                   disabled={generateMutation.isPending}
-                  size="lg"
+                  className="w-32"
                 >
                   {generateMutation.isPending ? (
-                    <Loader2Icon className="h-4 w-4 animate-spin" />
+                    <>
+                      <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                      Fetching...
+                    </>
                   ) : (
-                    "Get Keywords"
+                    <>
+                      <SearchIcon className="w-4 h-4 mr-2" />
+                      New Search
+                    </>
                   )}
                 </Button>
-                <Button variant="outline" size="lg">
-                  Get Competitors
-                </Button>
+                {searchHistory.length > 0 && (
+                  <Button
+                    onClick={() => handleSearch(true)}
+                    variant="outline"
+                    className="w-32"
+                    disabled={generateMutation.isPending}
+                  >
+                    <RefreshCwIcon className="w-4 h-4 mr-2" />
+                    Use History
+                  </Button>
+                )}
               </div>
-            </div>
-
-            {/* Exclude Variations Checkbox */}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="excludeVariations"
-                checked={excludeVariations}
-                onChange={(e) => setExcludeVariations(e.target.checked)}
-                className="rounded"
-              />
-              <Label
-                htmlFor="excludeVariations"
-                className="text-sm cursor-pointer"
-              >
-                Exclude variations
-              </Label>
-              <InfoIcon className="h-4 w-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
 
-        {/* Info Card */}
-        <Card className="bg-muted/50">
-          <CardContent className="pt-6">
-            <h3 className="font-semibold text-lg mb-2">
-              Search specific products from Amazon and find their top ranking
-              keywords
-            </h3>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Leverage your competitors&apos; keyword ranking strategy to
-              improve your own listing. You can also use Cerebro to gauge the
-              most effective keywords for your product on Amazon, optimize your
-              product listing to boost sales, and keep competitive rates on your
-              products. Cerebro is key in successfully launching new products
-              and bringing more awareness to your brand.
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Stage 2: Results with Filters
-  return (
-    <div className="space-y-6">
-      {/* Filters Section */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <FilterIcon className="h-5 w-5" />
-              <h3 className="font-semibold">Filters</h3>
-            </div>
-            <Button
-              variant="link"
-              className="text-sm"
-              onClick={() => setShowResults(false)}
-            >
-              ← Back to Search
-            </Button>
-          </div>
-
-          <div className="space-y-4">
-            {/* Filter Presets */}
-            <div className="flex gap-2">
-              <Badge variant="outline" className="cursor-pointer">
-                Exclude Special Characters
-              </Badge>
-              <Badge variant="outline" className="cursor-pointer">
-                Brand Name Removal
-              </Badge>
-              <Badge variant="outline" className="cursor-pointer">
-                New Filter
-              </Badge>
-              <Button variant="outline" size="sm">
-                <FilterIcon className="h-4 w-4 mr-2" />
-                Filter Library
-              </Button>
-            </div>
-
-            {/* Filter Grid */}
-            <div className="grid grid-cols-5 gap-4">
-              {/* Word Count */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Word Count{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Min"
-                    value={wordCountMin}
-                    onChange={(e) => setWordCountMin(e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max"
-                    value={wordCountMax}
-                    onChange={(e) => setWordCountMax(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Search Volume */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Search Volume{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Min"
-                    value={searchVolumeMin}
-                    onChange={(e) => setSearchVolumeMin(e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max"
-                    value={searchVolumeMax}
-                    onChange={(e) => setSearchVolumeMax(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Time Period */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Time Period{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <Input
-                  type="text"
-                  value="Current"
-                  disabled
-                  className="bg-muted"
-                />
-              </div>
-
-              {/* Organic Rank */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Organic Rank{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Min"
-                    value={organicRankMin}
-                    onChange={(e) => setOrganicRankMin(e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max"
-                    value={organicRankMax}
-                    onChange={(e) => setOrganicRankMax(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Match Type */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Match Type{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <Select value={matchType} onValueChange={setMatchType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="None selected">None selected</SelectItem>
-                    <SelectItem value="AR">Amazon Recommended</SelectItem>
-                    <SelectItem value="O">Organic</SelectItem>
-                    <SelectItem value="SP">Sponsored</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Phrases Containing */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Phrases Containing{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <Input
-                  placeholder="Ex. red dress"
-                  value={phrasesContaining}
-                  onChange={(e) => setPhrasesContaining(e.target.value)}
-                />
-              </div>
-
-              {/* Sponsored Rank */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Sponsored Rank{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Min"
-                    value={sponsoredRankMin}
-                    onChange={(e) => setSponsoredRankMin(e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max"
-                    value={sponsoredRankMax}
-                    onChange={(e) => setSponsoredRankMax(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex justify-between items-center pt-4 border-t">
-            <div className="text-sm text-muted-foreground">
-              Monthly uses: <span className="font-semibold">1/1,000</span>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline">Save as Filter Preset</Button>
-              <Button variant="outline">Clear</Button>
-              <Button>Apply Filters</Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Product Info & Stats */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-3">
-            {/* Product Image & Title */}
-            <div className="flex gap-4 flex-1">
-              <div className="w-20 h-20 bg-muted rounded flex items-center justify-center">
-                <span className="text-xs text-muted-foreground">Image</span>
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-sm line-clamp-2">
-                  {productInfo.title}
-                </h3>
-                <div className="flex gap-4 mt-2">
+        {/* History */}
+        {searchHistory.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Recent Searches</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-2 flex-wrap">
+                {searchHistory.map((history) => (
                   <Button
-                    variant="link"
+                    key={history.id}
+                    variant={
+                      selectedHistoryId === history.id ? "default" : "outline"
+                    }
                     size="sm"
-                    className="h-auto p-0 text-xs"
+                    onClick={() => loadFromHistory(history.id)}
                   >
-                    Run Listing Analyzer
+                    {history.asins.join(", ")} ({history.keywords.length}{" "}
+                    keywords)
                   </Button>
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="h-auto p-0 text-xs"
-                  >
-                    Track Competitors
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Keyword Distribution */}
-            <div className="border-l pl-6">
-              <h4 className="text-sm font-semibold mb-2">
-                Keyword Distribution
-              </h4>
-              <div className="grid grid-cols-4 gap-4 text-center">
-                <div>
-                  <div className="text-sm text-muted-foreground">
-                    Total Keywords
-                  </div>
-                  <div className="text-2xl font-bold">
-                    {productInfo.total_keywords}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Organic</div>
-                  <div className="text-2xl font-bold text-green-500">
-                    {productInfo.organic_keywords}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">Paid</div>
-                  <div className="text-2xl font-bold text-blue-500">
-                    {productInfo.paid_keywords}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-muted-foreground">
-                    Amazon Rec
-                  </div>
-                  <div className="text-2xl font-bold text-orange-500">
-                    {productInfo.amazon_recommended}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Amazon Search Vol */}
-            <div className="border-l pl-6">
-              <h4 className="text-sm font-semibold mb-2">Amazon Search Vol.</h4>
-              <div className="space-y-2">
-                <div>
-                  <div className="text-xs text-muted-foreground">
-                    Total Search Volume
-                  </div>
-                  <div className="text-xl font-bold">
-                    {productInfo.total_search_volume.toLocaleString()}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">
-                    Average Search Volume
-                  </div>
-                  <div className="text-xl font-bold">
-                    {productInfo.avg_search_volume.toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Word Frequency */}
-            <div className="border-l pl-6 min-w-[200px]">
-              <h4 className="text-sm font-semibold mb-2">Word Frequency</h4>
-              <div className="space-y-1 text-xs">
-                <div className="flex justify-between">
-                  <span>olive</span>
-                  <span className="font-semibold">(417)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>leaf</span>
-                  <span className="font-semibold">(258)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>extract</span>
-                  <span className="font-semibold">(230)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>oil</span>
-                  <span className="font-semibold">(136)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>organic</span>
-                  <span className="font-semibold">(74)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Keywords Table */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold">
-                {filteredKeywords.length} Filtered Keywords
-              </h3>
-              <Button variant="link" size="sm" className="h-auto p-0">
-                <SearchIcon className="h-3 w-3 mr-1" />
-                Search
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm">
-                Translate: None
-              </Button>
-              <Button variant="outline" size="sm">
-                <SettingsIcon className="h-4 w-4 mr-2" />
-                Customize
-              </Button>
-              <Button variant="outline" size="sm">
-                <DownloadIcon className="h-4 w-4 mr-2" />
-                Export Data...
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8">
-                    <input type="checkbox" className="rounded" />
-                  </TableHead>
-                  <TableHead>Keyword Phrase</TableHead>
-                  <TableHead>Search Volume</TableHead>
-                  <TableHead>Organic Rank</TableHead>
-                  <TableHead>Sponsored Rank</TableHead>
-                  <TableHead>Competing Products</TableHead>
-                  <TableHead>Match Type</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredKeywords.slice(0, 50).map((keyword, index) => (
-                  <TableRow key={index}>
-                    <TableCell>
-                      <input type="checkbox" className="rounded" />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {keyword.phrase}
-                    </TableCell>
-                    <TableCell>
-                      {keyword.search_volume.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      {keyword.organic_rank !== null ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-green-500/10 text-green-500"
-                        >
-                          #{keyword.organic_rank}
-                        </Badge>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {keyword.sponsored_rank !== null ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-blue-500/10 text-blue-500"
-                        >
-                          #{keyword.sponsored_rank}
-                        </Badge>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                    <TableCell>{keyword.competing_products}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {keyword.match_type}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Results */}
+      {productInfo && keywords.length > 0 && (
+        <>
+          {/* Product Info with Image */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-4">
+                {productInfo.asin && (
+                  <a
+                    href={`https://${getMarketplaceDomain()}/dp/${
+                      productInfo.asin
+                    }`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative w-24 h-24 shrink-0 border rounded-lg overflow-hidden hover:opacity-80 transition-opacity"
+                  >
+                    <Image
+                      src={productInfo.image || "/placeholder-product.jpg"}
+                      alt={productInfo.title}
+                      fill
+                      className="object-contain"
+                    />
+                  </a>
+                )}
+                <div className="flex-1">
+                  <h2 className="text-xl font-semibold">{productInfo.title}</h2>
+                  <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
+                    <span>Total: {productInfo.total_keywords}</span>
+                    <span>Organic: {productInfo.organic_keywords}</span>
+                    <span>Sponsored: {productInfo.paid_keywords}</span>
+                    <span>
+                      Avg SV: {productInfo.avg_search_volume.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Filters */}
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsFilterOpen(!isFilterOpen)}
+                  >
+                    <FilterIcon className="w-4 h-4 mr-2" />
+                    {isFilterOpen ? "Hide" : "Show"} Filters
+                  </Button>
+                  <div className="text-sm text-muted-foreground">
+                    Showing {filteredKeywords.length} of {keywords.length}{" "}
+                    keywords
+                  </div>
+                </div>
+
+                {isFilterOpen && (
+                  <div className="grid grid-cols-4 gap-4 pt-4 border-t">
+                    {/* Word Count */}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Word Count</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          placeholder="Min"
+                          value={wordCountMin}
+                          onChange={(e) => {
+                            setWordCountMin(e.target.value);
+                            applyFilters();
+                          }}
+                          className="h-8"
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Max"
+                          value={wordCountMax}
+                          onChange={(e) => {
+                            setWordCountMax(e.target.value);
+                            applyFilters();
+                          }}
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Search Volume */}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Search Volume</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          placeholder="Min"
+                          value={searchVolumeMin}
+                          onChange={(e) => {
+                            setSearchVolumeMin(e.target.value);
+                            applyFilters();
+                          }}
+                          className="h-8"
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Max"
+                          value={searchVolumeMax}
+                          onChange={(e) => {
+                            setSearchVolumeMax(e.target.value);
+                            applyFilters();
+                          }}
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Organic Rank */}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Organic Rank</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          placeholder="Min"
+                          value={organicRankMin}
+                          onChange={(e) => {
+                            setOrganicRankMin(e.target.value);
+                            applyFilters();
+                          }}
+                          className="h-8"
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Max"
+                          value={organicRankMax}
+                          onChange={(e) => {
+                            setOrganicRankMax(e.target.value);
+                            applyFilters();
+                          }}
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Match Type */}
+                    <div className="space-y-2">
+                      <Label className="text-xs">Match Type</Label>
+                      <Select
+                        value={matchType}
+                        onValueChange={(v) => {
+                          setMatchType(v);
+                          applyFilters();
+                        }}
+                      >
+                        <SelectTrigger className="h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="O">Organic</SelectItem>
+                          <SelectItem value="SP">Sponsored</SelectItem>
+                          <SelectItem value="O+SP">Both</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Phrase Search */}
+                    <div className="space-y-2 col-span-2">
+                      <Label className="text-xs">Contains Phrase</Label>
+                      <Input
+                        placeholder="Search in keywords..."
+                        value={phrasesContaining}
+                        onChange={(e) => {
+                          setPhrasesContaining(e.target.value);
+                          applyFilters();
+                        }}
+                        className="h-8"
+                      />
+                    </div>
+
+                    {/* Clear Filters */}
+                    <div className="space-y-2 col-span-2 flex items-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-8"
+                        onClick={() => {
+                          setWordCountMin("");
+                          setWordCountMax("");
+                          setSearchVolumeMin("");
+                          setSearchVolumeMax("");
+                          setOrganicRankMin("");
+                          setOrganicRankMax("");
+                          setSponsoredRankMin("");
+                          setSponsoredRankMax("");
+                          setMatchType("all");
+                          setPhrasesContaining("");
+                          applyFilters();
+                        }}
+                      >
+                        Clear All Filters
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Table */}
+          <Card>
+            <CardContent className="pt-6">
+              {/* Pagination Controls - Top */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    Rows per page:
+                  </span>
+                  <Select
+                    value={itemsPerPage.toString()}
+                    onValueChange={(v) => {
+                      setItemsPerPage(parseInt(v));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-20 h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                      <SelectItem value="500">500</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Page {currentPage} of {totalPages} (
+                    {filteredKeywords.length} keywords)
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeftIcon className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setCurrentPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      disabled={currentPage === totalPages}
+                    >
+                      <ChevronRightIcon className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[40%]">Keyword</TableHead>
+                      <TableHead className="text-right">
+                        Search Volume
+                      </TableHead>
+                      <TableHead className="text-center">
+                        Organic Rank
+                      </TableHead>
+                      <TableHead className="text-center">
+                        Sponsored Rank
+                      </TableHead>
+                      <TableHead className="text-center">Competing</TableHead>
+                      <TableHead className="text-center">Type</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isApplyingFilter ? (
+                      // Skeleton loading
+                      Array.from({ length: 10 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell>
+                            <Skeleton className="h-4 w-full" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-16 ml-auto" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-6 w-12 mx-auto" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-6 w-12 mx-auto" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-4 w-8 mx-auto" />
+                          </TableCell>
+                          <TableCell>
+                            <Skeleton className="h-6 w-16 mx-auto" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : paginatedKeywords.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center py-8 text-muted-foreground"
+                        >
+                          No keywords match your filters
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      paginatedKeywords.map((keyword, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <span className="flex-1">{keyword.phrase}</span>
+                              <a
+                                href={`https://${getMarketplaceDomain()}/s?k=${encodeURIComponent(
+                                  keyword.phrase
+                                )}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                <ExternalLinkIcon className="w-4 h-4" />
+                              </a>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {keyword.search_volume.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {keyword.organic_rank ? (
+                              <Badge variant="secondary" className="text-xs">
+                                #{keyword.organic_rank}
+                              </Badge>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {keyword.sponsored_rank ? (
+                              <Badge variant="secondary" className="text-xs">
+                                #{keyword.sponsored_rank}
+                              </Badge>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {keyword.competing_products}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className="text-xs">
+                              {keyword.match_type}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Pagination Controls - Bottom */}
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-sm text-muted-foreground">
+                  Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                  {Math.min(
+                    currentPage * itemsPerPage,
+                    filteredKeywords.length
+                  )}{" "}
+                  of {filteredKeywords.length}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeftIcon className="w-4 h-4 mr-1" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRightIcon className="w-4 h-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
