@@ -127,3 +127,18 @@ model Constraint {
   @@unique([projectId])
   @@map("constraints")
 }
+
+model SearchHistory {
+  id          String   @id @default(uuid())
+  userId      String
+  asins       String[] // Array of ASINs searched
+  marketplace String
+  keywords    Json // Array of keyword objects
+  productInfo Json // Product information (title, image, stats)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("search_history")
+}

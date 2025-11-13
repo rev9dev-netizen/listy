@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -13,7 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -31,7 +38,8 @@ import {
   ExternalLinkIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  RefreshCwIcon,
+  HistoryIcon,
+  XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import Image from "next/image";
@@ -70,13 +78,14 @@ export default function KeywordsPage() {
   // Search state
   const [marketplace, setMarketplace] = useState("www.amazon.com");
   const [asinInput, setAsinInput] = useState("");
+  const [asinChips, setAsinChips] = useState<string[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   // Results state
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [productInfo, setProductInfo] = useState<ProductInfo | null>(null);
 
   // History state
-  const [searchHistory, setSearchHistory] = useState<SearchHistory[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(
     null
   );
@@ -98,6 +107,42 @@ export default function KeywordsPage() {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
+
+  // Local new searches (not yet persisted)
+  const [localSearches, setLocalSearches] = useState<SearchHistory[]>([]);
+
+  // Fetch search history from database
+  const { data: historyData } = useQuery({
+    queryKey: ["searchHistory"],
+    queryFn: async () => {
+      const response = await fetch("/api/keywords/history");
+      if (!response.ok) throw new Error("Failed to fetch history");
+      return response.json();
+    },
+  });
+
+  // Combine database history with local searches
+  const searchHistory = useMemo(() => {
+    const dbHistory: SearchHistory[] = (historyData?.history || []).map(
+      (h: {
+        id: string;
+        asins: string[];
+        marketplace: string;
+        createdAt: string;
+        keywords: Keyword[];
+        productInfo: ProductInfo;
+      }) => ({
+        id: h.id,
+        asins: h.asins,
+        marketplace: h.marketplace,
+        timestamp: new Date(h.createdAt),
+        keywords: h.keywords || [],
+        productInfo: h.productInfo || ({} as ProductInfo),
+      })
+    );
+
+    return [...localSearches, ...dbHistory].slice(0, 10);
+  }, [historyData, localSearches]);
 
   const generateMutation = useMutation({
     mutationFn: async (asins: string[]) => {
@@ -126,7 +171,7 @@ export default function KeywordsPage() {
 
       return response.json();
     },
-    onSuccess: (data, asins) => {
+    onSuccess: async (data, asins) => {
       const newHistory: SearchHistory = {
         id: Date.now().toString(),
         asins,
@@ -139,11 +184,30 @@ export default function KeywordsPage() {
         },
       };
 
-      setSearchHistory((prev) => [newHistory, ...prev.slice(0, 9)]); // Keep last 10
+      setLocalSearches((prev) => [newHistory, ...prev.slice(0, 9)]); // Keep last 10
       setSelectedHistoryId(newHistory.id);
       setKeywords(newHistory.keywords);
       setProductInfo(newHistory.productInfo);
       setCurrentPage(1);
+
+      // Save to database
+      try {
+        await fetch("/api/keywords/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            asins,
+            marketplace,
+            keywords: data.keywords || [],
+            productInfo: {
+              ...data.productInfo,
+              asin: asins[0],
+            },
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to save history to database:", error);
+      }
 
       toast.success(
         `Fetched ${data.keywords?.length || 0} keywords from DataForSEO!`
@@ -154,18 +218,37 @@ export default function KeywordsPage() {
     },
   });
 
-  const handleSearch = (useHistory = false) => {
-    const asins = asinInput
-      .split(/[\n,\s]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+  // Handle ASIN input and chip creation
+  const handleAsinInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "," || e.key === "Enter") {
+      e.preventDefault();
+      const trimmed = asinInput.trim();
+      if (trimmed && !asinChips.includes(trimmed) && asinChips.length < 10) {
+        setAsinChips([...asinChips, trimmed]);
+        setAsinInput("");
+      }
+    }
+  };
 
-    if (asins.length === 0) {
+  const handleAsinInputBlur = () => {
+    const trimmed = asinInput.trim();
+    if (trimmed && !asinChips.includes(trimmed) && asinChips.length < 10) {
+      setAsinChips([...asinChips, trimmed]);
+      setAsinInput("");
+    }
+  };
+
+  const removeAsinChip = (asin: string) => {
+    setAsinChips(asinChips.filter((a) => a !== asin));
+  };
+
+  const handleSearch = () => {
+    if (asinChips.length === 0) {
       toast.error("Please enter at least one ASIN");
       return;
     }
 
-    if (asins.length > 10) {
+    if (asinChips.length > 10) {
       toast.error("Maximum 10 ASINs allowed");
       return;
     }
@@ -173,18 +256,19 @@ export default function KeywordsPage() {
     // Check if this ASIN combo exists in history
     const existingHistory = searchHistory.find(
       (h) =>
-        JSON.stringify(h.asins.sort()) === JSON.stringify(asins.sort()) &&
+        JSON.stringify(h.asins.sort()) ===
+          JSON.stringify(asinChips.slice().sort()) &&
         h.marketplace === marketplace
     );
 
-    if (existingHistory && useHistory) {
+    if (existingHistory) {
       setSelectedHistoryId(existingHistory.id);
       setKeywords(existingHistory.keywords);
       setProductInfo(existingHistory.productInfo);
       setCurrentPage(1);
       toast.info("Loaded from history");
     } else {
-      generateMutation.mutate(asins);
+      generateMutation.mutate(asinChips);
     }
   };
 
@@ -194,7 +278,8 @@ export default function KeywordsPage() {
       setSelectedHistoryId(historyId);
       setKeywords(history.keywords);
       setProductInfo(history.productInfo);
-      setAsinInput(history.asins.join(", "));
+      setAsinChips(history.asins);
+      setAsinInput("");
       setMarketplace(history.marketplace);
       setCurrentPage(1);
       toast.info("Loaded from history");
@@ -287,8 +372,8 @@ export default function KeywordsPage() {
 
   return (
     <div className="container mx-auto py-6 space-y-6">
-      {/* Header with Search */}
-      <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Reverse ASIN Lookup</h1>
           <p className="text-muted-foreground">
@@ -297,106 +382,153 @@ export default function KeywordsPage() {
           </p>
         </div>
 
-        {/* Search Bar - Always visible */}
-        <Card>
-          <CardContent className="">
-            <div className="flex items-start gap-4">
-              {/* Marketplace Selector */}
-              <div className="">
-                <Select value={marketplace} onValueChange={setMarketplace}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="www.amazon.com">🇺🇸 US</SelectItem>
-                    <SelectItem value="www.amazon.ca">🇨🇦 CA</SelectItem>
-                    <SelectItem value="www.amazon.com.mx">🇲🇽 MX</SelectItem>
-                    <SelectItem value="www.amazon.de">🇩🇪 DE</SelectItem>
-                    <SelectItem value="www.amazon.es">🇪🇸 ES</SelectItem>
-                    <SelectItem value="www.amazon.it">🇮🇹 IT</SelectItem>
-                    <SelectItem value="www.amazon.fr">🇫🇷 FR</SelectItem>
-                    <SelectItem value="www.amazon.co.uk">🇬🇧 UK</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* ASIN Input */}
-              <Textarea
-                placeholder="Enter ASINs (comma or newline separated)"
-                value={asinInput}
-                onChange={(e) => setAsinInput(e.target.value)}
-                rows={2}
-                className="flex-1"
-              />
-
-              {/* Search Buttons */}
-              <div className="flex flex-col gap-2">
-                <Button
-                  onClick={() => handleSearch(false)}
-                  disabled={generateMutation.isPending}
-                  className="w-32"
-                >
-                  {generateMutation.isPending ? (
-                    <>
-                      <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
-                      Fetching...
-                    </>
-                  ) : (
-                    <>
-                      <SearchIcon className="w-4 h-4 mr-2" />
-                      New Search
-                    </>
-                  )}
-                </Button>
-                {searchHistory.length > 0 && (
-                  <Button
-                    onClick={() => handleSearch(true)}
-                    variant="outline"
-                    className="w-32"
-                    disabled={generateMutation.isPending}
+        {/* History Button - Above search */}
+        <Sheet open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="lg">
+              <HistoryIcon className="w-4 h-4 mr-2" />
+              History
+            </Button>
+          </SheetTrigger>
+          <SheetContent className="w-[400px] sm:w-[540px]">
+            <SheetHeader>
+              <SheetTitle>Search History</SheetTitle>
+              <SheetDescription>
+                Your recent ASIN searches (last 10)
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-6 space-y-4">
+              {searchHistory.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No search history yet
+                </p>
+              ) : (
+                searchHistory.map((history) => (
+                  <Card
+                    key={history.id}
+                    className={`cursor-pointer transition-colors hover:border-primary ${
+                      selectedHistoryId === history.id
+                        ? "border-primary bg-accent"
+                        : ""
+                    }`}
+                    onClick={() => {
+                      loadFromHistory(history.id);
+                      setIsHistoryOpen(false);
+                    }}
                   >
-                    <RefreshCwIcon className="w-4 h-4 mr-2" />
-                    Use History
-                  </Button>
+                    <CardContent className="p-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="secondary">
+                            {history.asins.join(", ")}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(history.timestamp).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className="text-muted-foreground">
+                            {history.keywords.length} keywords
+                          </span>
+                          <span className="text-muted-foreground">
+                            {history.marketplace}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* Search Bar with Integrated Marketplace */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3">
+            {/* Search Input Container with Marketplace Inside */}
+            <div className="flex-1 flex items-center gap-2 border rounded-lg p-1 min-h-12 focus-within:ring-2 focus-within:ring-ring">
+              {/* Marketplace Selector Inside */}
+              <Select value={marketplace} onValueChange={setMarketplace}>
+                <SelectTrigger className="w-[140px] h-8 border-0 shadow-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="www.amazon.com">🇺🇸 US</SelectItem>
+                  <SelectItem value="www.amazon.ca">🇨🇦 CA</SelectItem>
+                  <SelectItem value="www.amazon.com.mx">🇲🇽 MX</SelectItem>
+                  <SelectItem value="www.amazon.de">🇩🇪 DE</SelectItem>
+                  <SelectItem value="www.amazon.es">🇪🇸 ES</SelectItem>
+                  <SelectItem value="www.amazon.it">🇮🇹 IT</SelectItem>
+                  <SelectItem value="www.amazon.fr">🇫🇷 FR</SelectItem>
+                  <SelectItem value="www.amazon.co.uk">🇬🇧 UK</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="w-px h-8 bg-border" />
+
+              {/* ASIN Chips Container */}
+              <div className="flex-1 flex items-center gap-2 flex-wrap">
+                {asinChips.map((asin) => (
+                  <Badge
+                    key={asin}
+                    variant="secondary"
+                    className="h-7 px-2 gap-1"
+                  >
+                    {asin}
+                    <button
+                      onClick={() => removeAsinChip(asin)}
+                      className="ml-1 hover:bg-destructive/20 rounded-full"
+                      type="button"
+                    >
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+                {asinChips.length < 10 && (
+                  <Input
+                    placeholder="Enter ASIN..."
+                    value={asinInput}
+                    onChange={(e) => setAsinInput(e.target.value)}
+                    onKeyDown={handleAsinInputKeyDown}
+                    onBlur={handleAsinInputBlur}
+                    className="flex-1 min-w-[120px] border-0 shadow-none h-8 focus-visible:ring-0 px-0"
+                  />
                 )}
               </div>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* History */}
-        {searchHistory.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Recent Searches</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-2 flex-wrap">
-                {searchHistory.map((history) => (
-                  <Button
-                    key={history.id}
-                    variant={
-                      selectedHistoryId === history.id ? "default" : "outline"
-                    }
-                    size="sm"
-                    onClick={() => loadFromHistory(history.id)}
-                  >
-                    {history.asins.join(", ")} ({history.keywords.length}{" "}
-                    keywords)
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            {/* Search Button - Same Height */}
+            <Button
+              onClick={handleSearch}
+              disabled={generateMutation.isPending || asinChips.length === 0}
+              size="lg"
+              className="h-12 px-6"
+            >
+              {generateMutation.isPending ? (
+                <>
+                  <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                  Fetching...
+                </>
+              ) : (
+                <>
+                  <SearchIcon className="w-4 h-4 mr-2" />
+                  Search
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Results */}
       {productInfo && keywords.length > 0 && (
         <>
           {/* Product Info with Image */}
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="">
               <div className="flex items-center gap-4">
                 {productInfo.asin && (
                   <a
@@ -432,7 +564,7 @@ export default function KeywordsPage() {
 
           {/* Filters */}
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-0">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Button
@@ -599,7 +731,7 @@ export default function KeywordsPage() {
 
           {/* Table */}
           <Card>
-            <CardContent className="pt-6">
+            <CardContent className="pt-0">
               {/* Pagination Controls - Top */}
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
