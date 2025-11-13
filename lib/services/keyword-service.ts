@@ -208,22 +208,29 @@ Return ONLY the keywords, one per line, no numbering or formatting.`
     }
 }
 
-// Analyze competitor ASIN (mock - would use Amazon SP-API in production)
-export async function analyzeCompetitorASIN(asin: string): Promise<RawKeywordData[]> {
-    const cacheKey = `keywords:asin:${asin}`
+// Analyze competitor ASIN using DataForSEO Labs Amazon API
+export async function analyzeCompetitorASIN(asin: string, marketplace = 'US'): Promise<RawKeywordData[]> {
+    const cacheKey = `keywords:asin:${marketplace}:${asin}`
     const cached = await cache.get<RawKeywordData[]>(cacheKey)
     if (cached) return cached
 
-    // In production, this would call Amazon SP-API to get product details
-    // For now, return mock data
-    const mockData: RawKeywordData[] = [
-        { term: 'wireless charger', frequency: 5, position: 10, source: asin },
-        { term: 'fast charging', frequency: 3, position: 20, source: asin },
-        { term: 'magsafe compatible', frequency: 4, position: 15, source: asin },
-    ]
+    try {
+        const { fetchRankedKeywords } = await import('../dataforseo')
+        const rankedItems = await fetchRankedKeywords(asin, marketplace, 500)
 
-    await cache.set(cacheKey, mockData, 3600) // 1 hour
-    return mockData
+        const data: RawKeywordData[] = rankedItems.map((item, index) => ({
+            term: item.keyword_data.keyword,
+            frequency: item.keyword_data.search_volume || 0,
+            position: item.ranked_serp_element?.serp_item?.rank_absolute || index + 1,
+            source: asin,
+        }))
+
+        await cache.set(cacheKey, data, 3600) // 1 hour
+        return data
+    } catch (error) {
+        console.error(`Failed to fetch ranked keywords for ${asin}:`, error)
+        return []
+    }
 }
 
 // Main keyword generation function
@@ -235,10 +242,10 @@ export async function generateKeywords(params: {
 }): Promise<Keyword[]> {
     const allRawKeywords: RawKeywordData[] = []
 
-    // Analyze competitor ASINs
+    // Analyze competitor ASINs using DataForSEO
     if (params.asin_list && params.asin_list.length > 0) {
         for (const asin of params.asin_list) {
-            const data = await analyzeCompetitorASIN(asin)
+            const data = await analyzeCompetitorASIN(asin, params.marketplace)
             allRawKeywords.push(...data)
         }
     }

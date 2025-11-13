@@ -68,6 +68,33 @@ model Keyword {
   @@map("keywords")
 }
 
+model KeywordResearch {
+  id                 String   @id @default(uuid())
+  userId             String
+  asin               String
+  marketplace        String   @default("US")
+  keyword            String
+  searchVolume       Int?
+  organicRank        Int?
+  sponsoredRank      Int?
+  competingProducts  Int?
+  titleDensity       Int?
+  searchVolumeTrend  Float?   // percentage change
+  matchType          String?  // O, SP, O+SP, AR
+  cerebro_iq_score   Int?
+  suggested_ppc_bid  Float?
+  keyword_sales      Int?
+  cpr                Int?
+  sponsored_asins    Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId])
+  @@index([asin, marketplace])
+  @@index([keyword])
+  @@map("keyword_research")
+}
+
 model Draft {
   id           String   @id @default(uuid())
   projectId    String

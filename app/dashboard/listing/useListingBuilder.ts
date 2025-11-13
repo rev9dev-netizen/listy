@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import type { UIKeyword, SortBy, AISuggestion, ListingParameters, ListingContent, ListingMetrics } from './_types'
 import { parseCerebroCSV, keywordIsUsed } from './_utils'
+import { enrichKeywords } from '@/lib/keyword-metrics'
 
 export function useListingBuilder() {
     // Keywords
@@ -67,6 +68,21 @@ export function useListingBuilder() {
                 setIsUploading(false)
                 setCurrentPage(1)
                 toast.success(`Loaded ${parsed.length} keywords from Cerebro file`)
+
+                // Live enrich missing metrics via DataForSEO (Labs Amazon by default)
+                const marketplace = typeof window !== 'undefined' ? (new URL(window.location.href).searchParams.get('marketplace') || 'US') : 'US'
+                toast.message('Fetching keyword volumes…', { description: 'Contacting DataForSEO' })
+                enrichKeywords(parsed.map(k => ({ phrase: k.phrase, searchVolume: k.searchVolume })), marketplace)
+                    .then(items => {
+                        if (!items || items.length === 0) return
+                        setKeywords(prev => prev.map(k => {
+                            const hit = items.find(x => x.phrase.toLowerCase() === k.phrase.toLowerCase())
+                            if (!hit) return k
+                            return { ...k, searchVolume: hit.searchVolume ?? 0 }
+                        }))
+                        toast.success(`Updated volumes for ${items.length} keywords`)
+                    })
+                    .catch(() => { toast.error('Failed to fetch volumes (will use cache next time)') })
             }, 500)
         }
         reader.readAsText(file)
@@ -74,9 +90,25 @@ export function useListingBuilder() {
 
     function addManualKeyword(phrase: string) {
         if (!phrase.trim()) return
-        setKeywords(prev => [...prev, { phrase: phrase.trim(), searchVolume: 0, sales: 0, cps: null, selected: true }])
+        const newKw = { phrase: phrase.trim(), searchVolume: 0, sales: 0, cps: null, selected: true }
+        setKeywords(prev => [...prev, newKw])
         setManualKeyword('')
         toast.success('Keyword added!')
+
+        // Enrich just this keyword
+        const marketplace = typeof window !== 'undefined' ? (new URL(window.location.href).searchParams.get('marketplace') || 'US') : 'US'
+        toast.message('Fetching keyword volume…')
+        enrichKeywords([newKw].map(k => ({ phrase: k.phrase, searchVolume: k.searchVolume })), marketplace)
+            .then(items => {
+                if (!items || items.length === 0) return
+                const map = new Map(items.map(i => [i.phrase.toLowerCase(), i]))
+                setKeywords(prev => prev.map(k => {
+                    const hit = map.get(k.phrase.toLowerCase())
+                    return hit ? { ...k, searchVolume: hit.searchVolume ?? 0 } : k
+                }))
+                toast.success('Volume updated')
+            })
+            .catch(() => { toast.error('Failed to fetch volume') })
     }
 
     function toggleKeyword(phrase: string) {

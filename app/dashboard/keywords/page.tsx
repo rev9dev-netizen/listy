@@ -29,29 +29,17 @@ import {
   FilterIcon,
   DownloadIcon,
   SettingsIcon,
-  TrendingUpIcon,
-  TrendingDownIcon,
   InfoIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Keyword {
   phrase: string;
-  cerebro_iq_score: number;
   search_volume: number;
-  search_volume_trend: number;
   organic_rank: number | null;
   sponsored_rank: number | null;
   competing_products: number;
-  keyword_sales: number;
-  aba_total_click_share: number | null;
-  aba_total_conv_share: number | null;
-  suggested_ppc_bid: number | null;
-  title_density: number;
   match_type: string;
-  amazon_rec_rank: number | null;
-  cpr: number;
-  sponsored_asins: number;
 }
 
 export default function KeywordsPage() {
@@ -85,84 +73,59 @@ export default function KeywordsPage() {
   const [sponsoredRankMax, setSponsoredRankMax] = useState("");
   const [matchType, setMatchType] = useState("None selected");
   const [phrasesContaining, setPhrasesContaining] = useState("");
-  const [keywordSalesMin, setKeywordSalesMin] = useState("");
-  const [keywordSalesMax, setKeywordSalesMax] = useState("");
-  const [cerebroIQMin, setCerebroIQMin] = useState("");
-  const [cerebroIQMax, setCerebroIQMax] = useState("");
-  const [titleDensityMin, setTitleDensityMin] = useState("");
-  const [titleDensityMax, setTitleDensityMax] = useState("");
 
   const generateMutation = useMutation({
     mutationFn: async (asins: string[]) => {
-      const response = await fetch("/api/keywords/generate", {
+      // Parse marketplace correctly
+      let marketplaceCode = "US";
+      if (marketplace.includes("amazon.ca")) marketplaceCode = "CA";
+      else if (marketplace.includes("amazon.com.mx")) marketplaceCode = "MX";
+      else if (marketplace.includes("amazon.de")) marketplaceCode = "DE";
+      else if (marketplace.includes("amazon.es")) marketplaceCode = "ES";
+      else if (marketplace.includes("amazon.it")) marketplaceCode = "IT";
+      else if (marketplace.includes("amazon.fr")) marketplaceCode = "FR";
+      else if (marketplace.includes("amazon.co.uk")) marketplaceCode = "UK";
+      else if (marketplace.includes("amazon.co.jp")) marketplaceCode = "JP";
+
+      console.log("Sending to API:", { asins, marketplace: marketplaceCode });
+
+      const response = await fetch("/api/keywords/cerebro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          marketplace,
-          asin_list: asins,
+          asins,
+          marketplace: marketplaceCode,
         }),
       });
-      if (!response.ok) throw new Error("Failed to generate keywords");
+      if (!response.ok) {
+        const err = await response
+          .json()
+          .catch(() => ({ error: "Request failed" }));
+        throw new Error(err.error || "Failed to generate keywords");
+      }
       return response.json();
     },
     onSuccess: (data) => {
-      // Generate Cerebro-style mock data
-      const cerebroKeywords = data.keywords.map((k: { term: string }) => ({
-        phrase: k.term,
-        cerebro_iq_score: Math.floor(Math.random() * 1000) + 1000,
-        search_volume: Math.floor(Math.random() * 50000) + 100,
-        search_volume_trend: Math.floor(Math.random() * 200) - 100,
-        organic_rank:
-          Math.random() > 0.3 ? Math.floor(Math.random() * 100) + 1 : null,
-        sponsored_rank:
-          Math.random() > 0.5 ? Math.floor(Math.random() * 100) + 1 : null,
-        competing_products: Math.floor(Math.random() * 500) + 10,
-        keyword_sales: Math.floor(Math.random() * 10),
-        aba_total_click_share: Math.random() > 0.5 ? Math.random() : null,
-        aba_total_conv_share: Math.random() > 0.5 ? Math.random() : null,
-        suggested_ppc_bid:
-          Math.random() > 0.5
-            ? parseFloat((Math.random() * 3 + 0.5).toFixed(2))
-            : null,
-        title_density: Math.floor(Math.random() * 10),
-        match_type: ["AR", "O", "SP"][Math.floor(Math.random() * 3)],
-        amazon_rec_rank:
-          Math.random() > 0.5 ? Math.floor(Math.random() * 100) + 1 : null,
-        cpr: Math.floor(Math.random() * 10),
-        sponsored_asins: Math.floor(Math.random() * 50) + 1,
-      }));
-
-      setKeywords(cerebroKeywords);
-      setProductInfo({
-        title:
-          "Total Olive® - Olive Leaf Extract (40% Oleuropein) Plus Olive Fruit Extract (20% Hydroxytyrosol)",
-        image: "/placeholder-product.jpg",
-        total_keywords: cerebroKeywords.length,
-        organic_keywords: cerebroKeywords.filter(
-          (k: Keyword) => k.organic_rank !== null
-        ).length,
-        paid_keywords: cerebroKeywords.filter(
-          (k: Keyword) => k.sponsored_rank !== null
-        ).length,
-        amazon_recommended: cerebroKeywords.filter(
-          (k: Keyword) => k.amazon_rec_rank !== null
-        ).length,
-        total_search_volume: cerebroKeywords.reduce(
-          (sum: number, k: Keyword) => sum + k.search_volume,
-          0
-        ),
-        avg_search_volume: Math.floor(
-          cerebroKeywords.reduce(
-            (sum: number, k: Keyword) => sum + k.search_volume,
-            0
-          ) / cerebroKeywords.length
-        ),
-      });
+      setKeywords(data.keywords || []);
+      setProductInfo(
+        data.productInfo || {
+          title: "Product Analysis",
+          image: "/placeholder-product.jpg",
+          total_keywords: 0,
+          organic_keywords: 0,
+          paid_keywords: 0,
+          amazon_recommended: 0,
+          total_search_volume: 0,
+          avg_search_volume: 0,
+        }
+      );
       setShowResults(true);
-      toast.success(`Generated ${cerebroKeywords.length} keywords!`);
+      toast.success(
+        `Fetched ${data.keywords?.length || 0} real keywords from DataForSEO!`
+      );
     },
-    onError: () => {
-      toast.error("Failed to generate keywords");
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to generate keywords");
     },
   });
 
@@ -222,9 +185,7 @@ export default function KeywordsPage() {
     return (
       <div className="max-w-full mx-auto space-y-6 py-8">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl text-left font-bold">
-            Cerebro - Reverse ASIN Lookup
-          </h1>
+          <h1 className="text-3xl text-left font-bold">Reverse ASIN Lookup</h1>
           <p className="text-muted-foreground text-left">
             Enter up to 10 product identifiers to find their top performing
             keywords.
@@ -492,50 +453,6 @@ export default function KeywordsPage() {
                 />
               </div>
 
-              {/* Keyword Sales */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Keyword Sales{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Min"
-                    value={keywordSalesMin}
-                    onChange={(e) => setKeywordSalesMin(e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max"
-                    value={keywordSalesMax}
-                    onChange={(e) => setKeywordSalesMax(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Cerebro IQ Score */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Cerebro IQ Score{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Min"
-                    value={cerebroIQMin}
-                    onChange={(e) => setCerebroIQMin(e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max"
-                    value={cerebroIQMax}
-                    onChange={(e) => setCerebroIQMax(e.target.value)}
-                  />
-                </div>
-              </div>
-
               {/* Sponsored Rank */}
               <div className="space-y-2">
                 <Label className="text-sm flex items-center gap-1">
@@ -557,40 +474,18 @@ export default function KeywordsPage() {
                   />
                 </div>
               </div>
-
-              {/* Title Density */}
-              <div className="space-y-2">
-                <Label className="text-sm flex items-center gap-1">
-                  Title Density{" "}
-                  <InfoIcon className="h-3 w-3 text-muted-foreground" />
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder="Min"
-                    value={titleDensityMin}
-                    onChange={(e) => setTitleDensityMin(e.target.value)}
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max"
-                    value={titleDensityMax}
-                    onChange={(e) => setTitleDensityMax(e.target.value)}
-                  />
-                </div>
-              </div>
             </div>
+          </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-between items-center pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
-                Monthly uses: <span className="font-semibold">1/1,000</span>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline">Save as Filter Preset</Button>
-                <Button variant="outline">Clear</Button>
-                <Button>Apply Filters</Button>
-              </div>
+          {/* Action Buttons */}
+          <div className="flex justify-between items-center pt-4 border-t">
+            <div className="text-sm text-muted-foreground">
+              Monthly uses: <span className="font-semibold">1/1,000</span>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline">Save as Filter Preset</Button>
+              <Button variant="outline">Clear</Button>
+              <Button>Apply Filters</Button>
             </div>
           </div>
         </CardContent>
@@ -754,20 +649,11 @@ export default function KeywordsPage() {
                     <input type="checkbox" className="rounded" />
                   </TableHead>
                   <TableHead>Keyword Phrase</TableHead>
-                  <TableHead>ABA Total Click Share</TableHead>
-                  <TableHead>ABA Total Conv. Share</TableHead>
-                  <TableHead>Keyword Sales</TableHead>
-                  <TableHead>Cerebro IQ Score</TableHead>
                   <TableHead>Search Volume</TableHead>
-                  <TableHead>Search Volume Trend</TableHead>
-                  <TableHead>Suggested PPC Bid</TableHead>
-                  <TableHead>Sponsored ASINs</TableHead>
-                  <TableHead>Competing Products</TableHead>
-                  <TableHead>CPR</TableHead>
-                  <TableHead>Title Density</TableHead>
-                  <TableHead>Match Type</TableHead>
                   <TableHead>Organic Rank</TableHead>
                   <TableHead>Sponsored Rank</TableHead>
+                  <TableHead>Competing Products</TableHead>
+                  <TableHead>Match Type</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -780,58 +666,7 @@ export default function KeywordsPage() {
                       {keyword.phrase}
                     </TableCell>
                     <TableCell>
-                      {keyword.aba_total_click_share !== null
-                        ? `${(keyword.aba_total_click_share * 100).toFixed(0)}%`
-                        : "N/A"}
-                    </TableCell>
-                    <TableCell>
-                      {keyword.aba_total_conv_share !== null
-                        ? `${(keyword.aba_total_conv_share * 100).toFixed(0)}%`
-                        : "N/A"}
-                    </TableCell>
-                    <TableCell>{keyword.keyword_sales}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className="bg-purple-500/10 text-purple-500"
-                      >
-                        {keyword.cerebro_iq_score.toLocaleString()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
                       {keyword.search_volume.toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        {keyword.search_volume_trend > 0 ? (
-                          <TrendingUpIcon className="h-3 w-3 text-red-500" />
-                        ) : (
-                          <TrendingDownIcon className="h-3 w-3 text-green-500" />
-                        )}
-                        <span
-                          className={
-                            keyword.search_volume_trend > 0
-                              ? "text-red-500"
-                              : "text-green-500"
-                          }
-                        >
-                          {Math.abs(keyword.search_volume_trend)}%
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {keyword.suggested_ppc_bid !== null
-                        ? `$${keyword.suggested_ppc_bid.toFixed(2)}`
-                        : "N/A"}
-                    </TableCell>
-                    <TableCell>{keyword.sponsored_asins}</TableCell>
-                    <TableCell>{keyword.competing_products}</TableCell>
-                    <TableCell>{keyword.cpr}</TableCell>
-                    <TableCell>{keyword.title_density}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {keyword.match_type}
-                      </Badge>
                     </TableCell>
                     <TableCell>
                       {keyword.organic_rank !== null ? (
@@ -839,7 +674,7 @@ export default function KeywordsPage() {
                           variant="outline"
                           className="bg-green-500/10 text-green-500"
                         >
-                          {keyword.organic_rank}
+                          #{keyword.organic_rank}
                         </Badge>
                       ) : (
                         "-"
@@ -851,11 +686,17 @@ export default function KeywordsPage() {
                           variant="outline"
                           className="bg-blue-500/10 text-blue-500"
                         >
-                          {keyword.sponsored_rank}
+                          #{keyword.sponsored_rank}
                         </Badge>
                       ) : (
                         "-"
                       )}
+                    </TableCell>
+                    <TableCell>{keyword.competing_products}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">
+                        {keyword.match_type}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))}

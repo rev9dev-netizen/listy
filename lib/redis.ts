@@ -11,8 +11,14 @@ export const cache = {
     async get<T>(key: string): Promise<T | null> {
         try {
             const value = await redis.get<string>(key)
-            return value ? JSON.parse(value) : null
+            if (!value) return null
+            if (typeof value === 'string' && value.trim() === '') return null
+            return JSON.parse(value)
         } catch (error) {
+            // Silently handle parse errors for empty/invalid cache
+            if (error instanceof SyntaxError) {
+                return null
+            }
             console.error('Redis GET error:', error)
             return null
         }
