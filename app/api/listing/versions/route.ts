@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
         if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
         return NextResponse.json({
-            versions: project.drafts.map(d => ({
+            versions: project.drafts.map((d: { id: string; version: number; updatedAt: Date; createdAt: Date }) => ({
                 id: d.id,
                 version: d.version,
                 updatedAt: d.updatedAt,
