@@ -1,25 +1,36 @@
-import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/databse/prisma'
+import { getOrCreateUser } from '@/lib/auth-helpers'
 
-// GET: list all versions
+// GET: list all versions for user
 export async function GET(request: NextRequest) {
     try {
-        const { userId } = await auth()
-        if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        const projectId = request.nextUrl.searchParams.get('projectId')
-        if (!projectId) return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
+        const user = await getOrCreateUser()
+        const draftId = request.nextUrl.searchParams.get('draftId')
 
-        const project = await prisma.project.findFirst({
-            where: { id: projectId, user: { clerkId: userId } },
-            include: { drafts: { orderBy: { version: 'desc' } } }
+        // If draftId provided, get versions related to that specific listing
+        // Otherwise get all user's draft versions
+        const drafts = await prisma.draft.findMany({
+            where: draftId
+                ? { id: draftId, userId: user.id }
+                : { userId: user.id },
+            orderBy: { version: 'desc' },
+            select: {
+                id: true,
+                version: true,
+                title: true,
+                finalized: true,
+                updatedAt: true,
+                createdAt: true
+            }
         })
-        if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
         return NextResponse.json({
-            versions: project.drafts.map((d: { id: string; version: number; updatedAt: Date; createdAt: Date }) => ({
+            versions: drafts.map(d => ({
                 id: d.id,
                 version: d.version,
+                title: d.title,
+                finalized: d.finalized,
                 updatedAt: d.updatedAt,
                 createdAt: d.createdAt
             }))
@@ -30,20 +41,21 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// POST: fetch a specific version content (version or id)
+// POST: fetch a specific version content (version number or id)
 export async function POST(request: NextRequest) {
     try {
-        const { userId } = await auth()
-        if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        const body = await request.json() as { projectId: string; version?: number; id?: string }
-        const { projectId, version, id } = body
-        if (!projectId) return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
+        const user = await getOrCreateUser()
+        const body = await request.json() as { version?: number; id?: string }
+        const { version, id } = body
 
-        const whereDraft = id ? { id } : version ? { projectId_version: { projectId, version } } : null
-        if (!whereDraft) return NextResponse.json({ error: 'Provide id or version' }, { status: 400 })
+        if (!id && version === undefined) {
+            return NextResponse.json({ error: 'Provide id or version' }, { status: 400 })
+        }
 
         const draft = await prisma.draft.findFirst({
-            where: id ? { id, project: { user: { clerkId: userId } } } : { projectId, version, project: { user: { clerkId: userId } } }
+            where: id
+                ? { id, userId: user.id }
+                : { userId: user.id, version }
         })
 
         if (!draft) return NextResponse.json({ error: 'Draft version not found' }, { status: 404 })
@@ -54,7 +66,9 @@ export async function POST(request: NextRequest) {
             title: draft.title,
             bullets: draft.bullets,
             description: draft.description,
-            backendTerms: draft.backendTerms
+            backendTerms: draft.backendTerms,
+            keywords: draft.keywords,
+            finalized: draft.finalized
         })
     } catch (e) {
         console.error('Error fetching version', e)

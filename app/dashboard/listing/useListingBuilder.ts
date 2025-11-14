@@ -145,26 +145,44 @@ export function useListingBuilder() {
 
     const generateContentMutation = useMutation({
         mutationFn: async (data: { section: 'title' | 'bullets' | 'description' }) => {
-            const selectedKeywords = keywords.filter(k => k.selected).map(k => k.phrase)
+            const selectedKeywords = keywords.filter(k => k.selected)
             if (selectedKeywords.length === 0) throw new Error('Please select keywords first')
             if (!params.productCharacteristics.trim()) throw new Error('Please fill in product characteristics')
+
             const response = await fetch('/api/listing/draft', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-                    marketplace: 'US', brand: params.brandName, product_type: params.productName,
-                    attributes: { characteristics: params.productCharacteristics }, tone: params.tone,
-                    keywords: { primary: selectedKeywords, secondary: [] }, section: data.section,
-                    showBrandName: params.showBrandName, targetAudience: params.targetAudience,
-                    avoidWords: params.avoidWords.split(',').map(w => w.trim()).filter(Boolean)
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    productName: params.productName || 'Product',
+                    brand: params.brandName,
+                    category: params.productCharacteristics,
+                    keywords: selectedKeywords,
+                    features: params.characteristicTags,
+                    targetAudience: params.targetAudience,
+                    marketplace: 'US',
+                    templateId: 'professional-seo',
+                    section: data.section // Pass the specific section to generate
                 })
             })
-            if (!response.ok) throw new Error('Failed to generate content')
-            return { ...(await response.json()), ...data }
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ error: 'Failed to generate content' }))
+                throw new Error(error.error || 'Failed to generate content')
+            }
+
+            return { ...(await response.json()), section: data.section }
         },
         onSuccess: (data) => {
-            if (data.section === 'title') setCurrentSuggestion({ content: data.title, section: 'title' })
-            else if (data.section === 'bullets') setCurrentSuggestion({ content: data.bullets.join('\n\n'), section: 'bullet' })
-            else if (data.section === 'description') setCurrentSuggestion({ content: data.description, section: 'description' })
+            // The API returns full listing, but we only show the requested section
+            if (data.section === 'title') {
+                setCurrentSuggestion({ content: data.title, section: 'title' })
+            } else if (data.section === 'bullets') {
+                setCurrentSuggestion({ content: data.bullets.join('\n\n'), section: 'bullet' })
+            } else if (data.section === 'description') {
+                setCurrentSuggestion({ content: data.description, section: 'description' })
+            }
             setSuggestionDialog(true)
+            toast.success('Content generated successfully!')
         },
         onError: (e: Error) => toast.error(e.message)
     })
@@ -193,28 +211,28 @@ export function useListingBuilder() {
         }, 100)
     }
 
-    // Autosave: debounce content changes when a projectId exists in URL
+    // Autosave: debounce content changes when a draft id exists in URL
     const autosaveRef = useRef<NodeJS.Timeout | null>(null)
     const [saving, setSaving] = useState(false)
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
     useEffect(() => {
-        const projectId = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('projectId') : null
-        if (!projectId) return
+        const draftId = typeof window !== 'undefined' ? new URL(window.location.href).searchParams.get('id') : null
+        if (!draftId) return
         const hasContent = content.title || content.description || content.bullet1 || content.bullet2 || content.bullet3 || content.bullet4 || content.bullet5 || keywords.length > 0
         if (!hasContent) return
         if (autosaveRef.current) clearTimeout(autosaveRef.current)
         autosaveRef.current = setTimeout(async () => {
             try {
                 setSaving(true)
-                console.log('Autosaving with keywords:', keywords.length, keywords.slice(0, 3)) // Debug log with sample
+                console.log('Autosaving with keywords:', keywords.length, keywords.slice(0, 3))
                 const payload = {
                     title: content.title,
                     bullets: [content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5],
                     description: content.description,
                     keywords: keywords
                 }
-                console.log('Autosave payload:', payload) // Debug full payload
-                const res = await fetch(`/api/listing/draft?projectId=${projectId}`, {
+                console.log('Autosave payload:', payload)
+                const res = await fetch(`/api/listing/draft?id=${draftId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -223,7 +241,6 @@ export function useListingBuilder() {
                     setLastSavedAt(new Date())
                 } else {
                     const err = await res.json().catch(() => ({}))
-                    // surface once while typing bursts
                     console.warn('Autosave failed', err)
                 }
             } catch {

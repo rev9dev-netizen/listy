@@ -19,6 +19,7 @@ interface GenerateListingRequest {
     uniqueSellingPoints?: string[];
     templateId?: string;
     marketplace?: string;
+    section?: 'title' | 'bullets' | 'description' | 'all';
 }
 
 export async function POST(request: NextRequest) {
@@ -44,7 +45,18 @@ export async function POST(request: NextRequest) {
         // Generate listing with AI
         const generated = await generateAmazonListing(body)
 
-        // Get current version for user
+        // If generating a specific section only, return just the content (don't save)
+        if (body.section && body.section !== 'all') {
+            return NextResponse.json({
+                title: generated.title,
+                bullets: generated.bullets,
+                description: generated.description,
+                warnings: generated.warnings,
+                keywordUsage: generated.keywordUsage,
+            })
+        }
+
+        // For 'all' or no section specified, create a full draft
         const lastDraft = await prisma.draft.findFirst({
             where: { userId: user.id },
             orderBy: { version: 'desc' },

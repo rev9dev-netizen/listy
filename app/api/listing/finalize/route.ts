@@ -1,16 +1,15 @@
-import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/databse/prisma'
 import { computeDraftHash } from '@/lib/utils'
+import { getOrCreateUser } from '@/lib/auth-helpers'
 
 // POST: finalize the current listing by creating a new version snapshot
 export async function POST(request: NextRequest) {
     try {
-        const { userId } = await auth()
-        if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        const user = await getOrCreateUser()
 
         const body = await request.json() as {
-            projectId: string
+            draftId?: string
             title: string
             bullets: string[]
             description: string
@@ -24,24 +23,11 @@ export async function POST(request: NextRequest) {
             }>
         }
 
-        const { projectId, title, bullets, description, backendTerms, keywords } = body
-        if (!projectId) return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
+        const { draftId, title, bullets, description, backendTerms, keywords } = body
 
-        const project = await prisma.project.findFirst({
-            where: { id: projectId, user: { clerkId: userId } },
-            include: {
-                drafts: {
-                    orderBy: { version: 'desc' },
-                    take: 1,
-                    select: { id: true, version: true, keywords: true }
-                }
-            }
-        })
-        if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-
-        // Get latest finalized snapshot (not the editing draft)
+        // Get latest finalized snapshot for this user
         const lastFinal = await prisma.draft.findFirst({
-            where: { projectId, finalized: true },
+            where: { userId: user.id, finalized: true },
             orderBy: { version: 'desc' },
             select: { id: true, version: true, keywords: true, contentHash: true }
         })
@@ -56,19 +42,46 @@ export async function POST(request: NextRequest) {
         if (lastFinal?.contentHash === contentHash) {
             return NextResponse.json({ id: lastFinal.id, version: lastFinal.version })
         }
-        const draft = await prisma.draft.create({
-            data: {
-                projectId,
-                title,
-                bullets: bullets as unknown as object,
-                description,
-                backendTerms: (backendTerms ?? null) as unknown as string | null,
-                keywords: inheritedKeywords as unknown as object,
-                finalized: true,
-                contentHash,
-                version: newVersion
+
+        // If draftId provided, update existing draft, otherwise create new
+        let draft
+        if (draftId) {
+            // Verify ownership before updating
+            const existing = await prisma.draft.findFirst({
+                where: { id: draftId, userId: user.id }
+            })
+            if (!existing) {
+                return NextResponse.json({ error: 'Draft not found' }, { status: 404 })
             }
-        })
+
+            draft = await prisma.draft.update({
+                where: { id: draftId },
+                data: {
+                    title,
+                    bullets: bullets as unknown as object,
+                    description,
+                    backendTerms: (backendTerms ?? null) as unknown as string | null,
+                    keywords: inheritedKeywords as unknown as object,
+                    finalized: true,
+                    contentHash,
+                    version: newVersion
+                }
+            })
+        } else {
+            draft = await prisma.draft.create({
+                data: {
+                    userId: user.id,
+                    title,
+                    bullets: bullets as unknown as object,
+                    description,
+                    backendTerms: (backendTerms ?? null) as unknown as string | null,
+                    keywords: inheritedKeywords as unknown as object,
+                    finalized: true,
+                    contentHash,
+                    version: newVersion
+                }
+            })
+        }
 
         return NextResponse.json({ id: draft.id, version: draft.version })
     } catch (e) {

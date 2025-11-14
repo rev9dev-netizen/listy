@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/databse/prisma'
+import { getOrCreateUser } from '@/lib/auth-helpers'
 import crypto from 'node:crypto'
 
 // Simple stable JSON stringify for hashing
@@ -15,15 +16,13 @@ function sha256(data: string) {
 
 export async function POST(req: NextRequest) {
     try {
-        const body = await req.json() as { projectId: string; asin: string; marketplace?: string }
-        const { projectId, asin } = body
-        if (!projectId || !asin) {
-            return NextResponse.json({ error: 'projectId and asin are required' }, { status: 400 })
-        }
+        const user = await getOrCreateUser()
+        const body = await req.json() as { asin: string; marketplace?: string }
+        const { asin, marketplace } = body
 
-        // Verify project exists
-        const project = await prisma.project.findUnique({ where: { id: projectId } })
-        if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+        if (!asin) {
+            return NextResponse.json({ error: 'ASIN is required' }, { status: 400 })
+        }
 
         const apiKey = process.env.SERPAPI_KEY
         if (!apiKey) {
@@ -33,7 +32,7 @@ export async function POST(req: NextRequest) {
         // Call SerpApi Amazon product endpoint
         const url = new URL('https://serpapi.com/search.json')
         url.searchParams.set('engine', 'amazon_product')
-        url.searchParams.set('amazon_domain', domainForMarketplace(project.marketplace || 'US'))
+        url.searchParams.set('amazon_domain', domainForMarketplace(marketplace || 'US'))
         url.searchParams.set('asin', asin)
         url.searchParams.set('api_key', apiKey)
 
@@ -58,7 +57,7 @@ export async function POST(req: NextRequest) {
 
         // Check latest finalized to avoid duplicates
         const lastFinal = await prisma.draft.findFirst({
-            where: { projectId, finalized: true },
+            where: { userId: user.id, finalized: true },
             orderBy: { version: 'desc' },
             select: { id: true, version: true, contentHash: true }
         })
@@ -71,7 +70,7 @@ export async function POST(req: NextRequest) {
 
         const draft = await prisma.draft.create({
             data: {
-                projectId,
+                userId: user.id,
                 title: title || '',
                 bullets,
                 description: description || '',

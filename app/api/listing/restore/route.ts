@@ -1,39 +1,40 @@
-import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/databse/prisma'
+import { getOrCreateUser } from '@/lib/auth-helpers'
 
 // POST: restore a version by creating a new head version copying its content
 export async function POST(request: NextRequest) {
     try {
-        const { userId } = await auth()
-        if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        const body = await request.json() as { projectId: string; version?: number; id?: string }
-        const { projectId, version, id } = body
-        if (!projectId) return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
+        const user = await getOrCreateUser()
+        const body = await request.json() as { version?: number; id?: string }
+        const { version, id } = body
 
-        const project = await prisma.project.findFirst({
-            where: { id: projectId, user: { clerkId: userId } },
-            include: { drafts: { orderBy: { version: 'desc' } } }
-        })
-        if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-
+        // Find source draft by id or version
         const sourceDraft = id
-            ? await prisma.draft.findFirst({ where: { id, projectId } })
-            : version
-                ? await prisma.draft.findFirst({ where: { projectId, version } })
+            ? await prisma.draft.findFirst({ where: { id, userId: user.id } })
+            : version !== undefined
+                ? await prisma.draft.findFirst({ where: { userId: user.id, version } })
                 : null
 
         if (!sourceDraft) return NextResponse.json({ error: 'Source draft not found' }, { status: 404 })
 
-        const newVersion = (project.drafts[0]?.version || 0) + 1
+        // Get latest version number for user
+        const latestDraft = await prisma.draft.findFirst({
+            where: { userId: user.id },
+            orderBy: { version: 'desc' },
+            select: { version: true }
+        })
+        const newVersion = (latestDraft?.version || 0) + 1
 
         const newDraft = await prisma.draft.create({
             data: {
-                projectId,
+                userId: user.id,
                 title: sourceDraft.title,
                 bullets: sourceDraft.bullets as unknown as object,
                 description: sourceDraft.description,
                 backendTerms: sourceDraft.backendTerms as unknown as string | null,
+                keywords: sourceDraft.keywords as unknown as object,
+                finalized: false,
                 version: newVersion
             }
         })

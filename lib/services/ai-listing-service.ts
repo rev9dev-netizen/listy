@@ -16,6 +16,7 @@ interface GenerateListingParams {
     uniqueSellingPoints?: string[];
     templateId?: string;
     marketplace?: string;
+    section?: 'title' | 'bullets' | 'description' | 'all'; // NEW: specify which section to generate
 }
 
 interface GeneratedListing {
@@ -34,6 +35,7 @@ interface GeneratedListing {
 export async function generateAmazonListing(params: GenerateListingParams): Promise<GeneratedListing> {
     const template = getTemplate(params.templateId || 'professional-seo');
     const selectedKeywords = params.keywords.filter(k => k.selected).map(k => k.phrase);
+    const section = params.section || 'all';
 
     // Sort keywords by search volume (primary to tertiary)
     const sortedKeywords = [...params.keywords]
@@ -44,8 +46,8 @@ export async function generateAmazonListing(params: GenerateListingParams): Prom
     const secondaryKeywords = sortedKeywords.slice(3, 8).map(k => k.phrase);
     const tertiaryKeywords = sortedKeywords.slice(8).map(k => k.phrase);
 
-    const systemPrompt = buildSystemPrompt(template);
-    const userPrompt = buildUserPrompt(params, template, primaryKeywords, secondaryKeywords, tertiaryKeywords);
+    const systemPrompt = buildSystemPrompt(template, section);
+    const userPrompt = buildUserPrompt(params, template, primaryKeywords, secondaryKeywords, tertiaryKeywords, section);
 
     try {
         const response = await mistral.chat({
@@ -55,34 +57,42 @@ export async function generateAmazonListing(params: GenerateListingParams): Prom
                 { role: 'user', content: userPrompt },
             ],
             temperature: 0.7,
-            max_tokens: 4000,
+            max_tokens: section === 'all' ? 4000 : 1500,
         });
 
-        const parsed = parseListingResponse(response);
+        const parsed = parseListingResponse(response, section);
 
         // Validate and check for banned words
         const warnings: string[] = [];
-        const titleBanned = checkBannedWords(parsed.title);
-        const bulletsBanned = parsed.bullets.flatMap(b => checkBannedWords(b));
-        const descBanned = checkBannedWords(parsed.description);
 
-        if (titleBanned.length > 0) {
-            warnings.push(`Title contains banned words: ${titleBanned.join(', ')}`);
+        if (parsed.title) {
+            const titleBanned = checkBannedWords(parsed.title);
+            if (titleBanned.length > 0) {
+                warnings.push(`Title contains banned words: ${titleBanned.join(', ')}`);
+            }
         }
-        if (bulletsBanned.length > 0) {
-            warnings.push(`Bullets contain banned words: ${[...new Set(bulletsBanned)].join(', ')}`);
+
+        if (parsed.bullets.length > 0) {
+            const bulletsBanned = parsed.bullets.flatMap(b => checkBannedWords(b));
+            if (bulletsBanned.length > 0) {
+                warnings.push(`Bullets contain banned words: ${[...new Set(bulletsBanned)].join(', ')}`);
+            }
         }
-        if (descBanned.length > 0) {
-            warnings.push(`Description contains banned words: ${[...new Set(descBanned)].join(', ')}`);
+
+        if (parsed.description) {
+            const descBanned = checkBannedWords(parsed.description);
+            if (descBanned.length > 0) {
+                warnings.push(`Description contains banned words: ${[...new Set(descBanned)].join(', ')}`);
+            }
         }
 
         return {
             ...parsed,
             warnings,
             keywordUsage: {
-                title: countKeywordUsage(parsed.title, selectedKeywords),
+                title: parsed.title ? countKeywordUsage(parsed.title, selectedKeywords) : 0,
                 bullets: parsed.bullets.reduce((sum, bullet) => sum + countKeywordUsage(bullet, selectedKeywords), 0),
-                description: countKeywordUsage(parsed.description, selectedKeywords),
+                description: parsed.description ? countKeywordUsage(parsed.description, selectedKeywords) : 0,
             },
         };
     } catch (error) {
@@ -91,85 +101,111 @@ export async function generateAmazonListing(params: GenerateListingParams): Prom
     }
 }
 
-function buildSystemPrompt(template: ListingTemplate): string {
-    return `You are an EXPERT Amazon SEO copywriter with 15+ years of experience creating top-performing listings. Your listings consistently rank in top 3 search results and achieve 10%+ conversion rates.
-
-## YOUR EXPERTISE:
-- Amazon A9/A10 algorithm mastery
-- Keyword optimization without stuffing
-- Compelling, conversion-focused copy
-- Amazon TOS compliance (no banned words/claims)
-- Customer psychology and buying triggers
+function buildSystemPrompt(template: ListingTemplate, section: 'title' | 'bullets' | 'description' | 'all'): string {
+    const baseRules = `You are an EXPERT Amazon SEO copywriter with 15+ years of experience creating top-performing listings.
 
 ## CRITICAL RULES - NEVER VIOLATE:
 
 ### 1. AMAZON BANNED CONTENT (INSTANT REJECTION):
-NEVER use these words or similar: ${AMAZON_BANNED_WORDS.slice(0, 20).join(', ')}, etc.
+NEVER use these words: ${AMAZON_BANNED_WORDS.slice(0, 20).join(', ')}, etc.
 - NO superlatives (best, #1, top-rated, perfect)
 - NO guarantees or medical claims
 - NO time-sensitive language (sale, limited time, deal)
 - NO competitor mentions
-- NO subjective exaggerations
 
 ### 2. KEYWORD INTEGRATION (NATURAL & STRATEGIC):
 - Keywords must flow NATURALLY in sentences
 - NEVER list keywords comma-separated
 - Use variations and long-tail combinations
-- Primary keywords in first 80 characters of title
-- Secondary keywords in bullets naturally
-- Tertiary keywords in description contextually
 - Density target: ${template.keywords.titleDensity} for title, ${template.keywords.bulletDensity} for bullets, ${template.keywords.descriptionDensity} for description
 
 ### 3. WRITING STYLE:
 - Professional yet engaging tone
 - Active voice, present tense
-- Specific numbers and details (not vague claims)
-- Customer-benefit focused (not just features)
-- Scannable formatting
+- Customer-benefit focused (not just features)`;
 
-### 4. STRUCTURE REQUIREMENTS:
+    if (section === 'title') {
+        return `${baseRules}
 
-**TITLE (${template.titleFormat}):**
+## GENERATE ONLY: TITLE
+
+**TITLE REQUIREMENTS (${template.titleFormat}):**
 - 150-200 characters (not exceeding 200)
 - Primary keyword in first 5 words
 - Clear product identification
 - Key features/benefits
 - No promotional language
 
-**BULLETS (5 bullets, ${template.bulletFormat}):**
+## OUTPUT FORMAT:
+Return ONLY plain text - the title itself. NO JSON, NO quotes, NO explanations.`;
+    }
+
+    if (section === 'bullets') {
+        return `${baseRules}
+
+## GENERATE ONLY: 5 BULLET POINTS
+
+**BULLET REQUIREMENTS (${template.bulletFormat}):**
+- Exactly 5 bullets
 - Each 200-250 characters
 - Start with BENEFIT/RESULT (what customer gets)
 - Support with FEATURES (how it works)
 - Integrate 2-3 keywords PER bullet naturally
-- Use proper capitalization (not all caps)
-- No emoji or special characters
+- Proper capitalization (not all caps)
+
+## OUTPUT FORMAT:
+Return ONLY valid JSON array:
+["bullet 1", "bullet 2", "bullet 3", "bullet 4", "bullet 5"]`;
+    }
+
+    if (section === 'description') {
+        return `${baseRules}
+
+## GENERATE ONLY: PRODUCT DESCRIPTION
+
+**DESCRIPTION REQUIREMENTS (${template.descriptionFormat}):**
+- 1500-2000 characters
+- Opening hook with primary keyword
+- 3-4 feature sections with subheadings
+- Naturally weave keywords throughout
+- Use HTML tags: <b>bold</b>, <br> for breaks
+
+## OUTPUT FORMAT:
+Return ONLY plain text - the HTML-formatted description. NO JSON, NO quotes, NO explanations.`;
+    }
+
+    // section === 'all'
+    return `${baseRules}
+
+## GENERATE: COMPLETE LISTING (Title, Bullets, Description, Backend Terms)
+
+**STRUCTURE REQUIREMENTS:**
+
+**TITLE (${template.titleFormat}):**
+- 150-200 characters
+- Primary keyword in first 5 words
+
+**BULLETS (${template.bulletFormat}):**
+- Exactly 5 bullets, 200-250 chars each
+- Benefit-driven with feature support
 
 **DESCRIPTION (${template.descriptionFormat}):**
 - 1500-2000 characters
-- Opening hook with primary keyword (problem/solution)
-- 3-4 feature sections with subheadings
-- Naturally weave keywords throughout
-- Include use cases and applications
-- End with brand trust/quality statement
-- Use HTML tags: <b>bold</b> for emphasis, <br> for breaks
+- HTML formatted with <b> and <br>
 
 **BACKEND SEARCH TERMS:**
-- Comma-separated keywords not used in listing
-- Variations, misspellings, synonyms
-- No repetition of visible keywords
+- Comma-separated unused keywords
+- Variations, synonyms
 - Under 250 bytes
 
 ## OUTPUT FORMAT:
-Return ONLY valid JSON (no markdown, no explanations):
+Return ONLY valid JSON:
 {
-  "title": "exact title text here",
-  "bullets": ["bullet 1", "bullet 2", "bullet 3", "bullet 4", "bullet 5"],
-  "description": "full HTML-formatted description",
+  "title": "exact title text",
+  "bullets": ["bullet1", "bullet2", "bullet3", "bullet4", "bullet5"],
+  "description": "HTML description",
   "backendTerms": "keyword1, keyword2, keyword3"
-}
-
-## YOUR MISSION:
-Create a COMPLIANT, CONVERTING, KEYWORD-OPTIMIZED listing that reads naturally, ranks high, and drives sales. Think like a customer - what would make YOU click "Add to Cart"?`;
+}`;
 }
 
 function buildUserPrompt(
@@ -177,9 +213,11 @@ function buildUserPrompt(
     template: ListingTemplate,
     primaryKeywords: string[],
     secondaryKeywords: string[],
-    tertiaryKeywords: string[]
+    tertiaryKeywords: string[],
+    section: 'title' | 'bullets' | 'description' | 'all'
 ): string {
-    return `Generate an Amazon listing for:
+    const sectionText = section === 'all' ? 'a complete Amazon listing' : `ONLY the ${section.toUpperCase()}`;
+    return `Generate ${sectionText} for:
 
 ## PRODUCT INFORMATION:
 - Product Name: ${params.productName}
@@ -202,24 +240,21 @@ ${params.uniqueSellingPoints && params.uniqueSellingPoints.length > 0 ? `## UNIQ
 ## TEMPLATE STYLE: ${template.name}
 ${template.description}
 
-## REQUIREMENTS CHECKLIST:
-✓ Use template format: "${template.titleFormat}" for title
-✓ Follow bullet structure: "${template.bulletFormat}"
-✓ Follow description structure: "${template.descriptionFormat}"
-✓ Integrate ALL primary keywords naturally in title
-✓ Use 2-3 keywords per bullet point (naturally, not forced)
-✓ Weave keywords throughout description in context
+## REQUIREMENTS:
 ✓ NO banned words (best, guaranteed, sale, etc.)
-✓ NO keyword stuffing or unnatural phrases
+✓ NO keyword stuffing - natural integration only
 ✓ Focus on CUSTOMER BENEFITS, not just features
-✓ Specific details and numbers (not vague claims)
+✓ Specific details and numbers
 ✓ Professional, confident tone
-✓ Backend terms include UNUSED keyword variations
 
-Generate the listing now. Return ONLY the JSON object.`;
+${section === 'title' ? '✓ Primary keywords in first 5 words\n✓ 150-200 characters total' : ''}
+${section === 'bullets' ? '✓ Exactly 5 bullets\n✓ Each 200-250 characters\n✓ Start with benefit, support with features' : ''}
+${section === 'description' ? '✓ 1500-2000 characters\n✓ Use HTML formatting (<b>, <br>)\n✓ 3-4 sections with subheadings' : ''}
+
+Generate now. Return in the specified format.`;
 }
 
-function parseListingResponse(response: string): Omit<GeneratedListing, 'warnings' | 'keywordUsage'> {
+function parseListingResponse(response: string, section: 'title' | 'bullets' | 'description' | 'all'): Omit<GeneratedListing, 'warnings' | 'keywordUsage'> {
     try {
         // Remove markdown code blocks if present
         let cleaned = response.trim();
@@ -229,16 +264,52 @@ function parseListingResponse(response: string): Omit<GeneratedListing, 'warning
             cleaned = cleaned.replace(/```\n?/g, '');
         }
 
-        const parsed = JSON.parse(cleaned);
+        // Handle section-specific responses
+        if (section === 'title') {
+            // Plain text response for title
+            return {
+                title: cleaned,
+                bullets: [],
+                description: '',
+                backendTerms: '',
+            };
+        }
 
+        if (section === 'bullets') {
+            // JSON array response for bullets
+            const bulletsArray = JSON.parse(cleaned);
+            if (!Array.isArray(bulletsArray)) {
+                throw new Error('Expected array for bullets');
+            }
+            return {
+                title: '',
+                bullets: bulletsArray,
+                description: '',
+                backendTerms: '',
+            };
+        }
+
+        if (section === 'description') {
+            // Plain text HTML response for description
+            return {
+                title: '',
+                bullets: [],
+                description: cleaned,
+                backendTerms: '',
+            };
+        }
+
+        // section === 'all' - full JSON object
+        const parsed = JSON.parse(cleaned);
         return {
             title: parsed.title || '',
             bullets: Array.isArray(parsed.bullets) ? parsed.bullets : [],
             description: parsed.description || '',
             backendTerms: parsed.backendTerms || '',
         };
-    } catch {
+    } catch (error) {
         console.error('Failed to parse AI response:', response);
+        console.error('Parse error:', error);
         throw new Error('Invalid response format from AI');
     }
 }

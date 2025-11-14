@@ -21,42 +21,19 @@ export default function ListingBuilderPage() {
   const [finishing, setFinishing] = useState(false);
   const hasLoadedRef = useRef(false);
 
-  // Ensure a project exists; if none in URL, create one and replace URL
+  // Load existing draft content when id parameter is present (only once)
   useEffect(() => {
-    const ensureProject = async () => {
-      const url = new URL(window.location.href);
-      const pid = url.searchParams.get("projectId");
-      if (pid) return; // already present
-      try {
-        const res = await fetch("/api/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ marketplace: "US" }),
-        });
-        if (!res.ok) return;
-        const pj = await res.json();
-        url.searchParams.set("projectId", pj.id);
-        router.replace(url.pathname + "?" + url.searchParams.toString());
-      } catch {
-        // ignore; user can create from dashboard
-      }
-    };
-    if (typeof window !== "undefined") ensureProject();
-  }, [router]);
-
-  // Load existing draft content when projectId is present (only once)
-  useEffect(() => {
-    const projectId = searchParams.get("projectId");
-    if (!projectId || hasLoadedRef.current) return;
+    const draftId = searchParams.get("id");
+    if (!draftId || hasLoadedRef.current) return;
 
     const loadDraft = async () => {
       try {
-        const res = await fetch(`/api/listing/draft?projectId=${projectId}`);
+        const res = await fetch(`/api/listing/draft?id=${draftId}`);
         if (!res.ok) return; // No draft yet, that's ok
 
         const draft = await res.json();
-        console.log("Loaded draft:", draft); // Debug log
-        console.log("Draft keywords:", draft.keywords); // Debug keywords specifically
+        console.log("Loaded draft:", draft);
+        console.log("Draft keywords:", draft.keywords);
 
         // Load content into builder
         const bullets = Array.isArray(draft.bullets) ? draft.bullets : [];
@@ -76,7 +53,7 @@ export default function ListingBuilderPage() {
             "Loading keywords:",
             draft.keywords.length,
             draft.keywords
-          ); // Debug log with actual data
+          );
           builder.setKeywords(draft.keywords);
         } else {
           console.log("No keywords to load or invalid format:", draft.keywords);
@@ -92,14 +69,11 @@ export default function ListingBuilderPage() {
   }, [searchParams]);
 
   async function handleFinish() {
-    const projectId =
+    const draftId =
       typeof window !== "undefined"
-        ? new URL(window.location.href).searchParams.get("projectId")
+        ? new URL(window.location.href).searchParams.get("id")
         : null;
-    if (!projectId) {
-      toast.error("No project. Create or open from dashboard.");
-      return;
-    }
+
     const bullets = [
       builder.content.bullet1,
       builder.content.bullet2,
@@ -113,7 +87,7 @@ export default function ListingBuilderPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId,
+          draftId: draftId || undefined,
           title: builder.content.title,
           bullets,
           description: builder.content.description,
@@ -124,7 +98,7 @@ export default function ListingBuilderPage() {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `Finalize failed (${res.status})`);
       }
-      toast.success("Listing saved");
+      toast.success("Listing finalized successfully");
       router.push("/dashboard/listing");
     } catch (e) {
       const msg =

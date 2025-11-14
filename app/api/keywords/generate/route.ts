@@ -1,15 +1,12 @@
-import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/databse/prisma'
 import { generateKeywords } from '@/lib/services/keyword-service'
+import { getOrCreateUser } from '@/lib/auth-helpers'
 import type { KeywordGenerationRequest } from '@/lib/types'
 
 export async function POST(request: NextRequest) {
     try {
-        const { userId } = await auth()
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
+        const user = await getOrCreateUser()
 
         const body = (await request.json()) as KeywordGenerationRequest
 
@@ -26,38 +23,25 @@ export async function POST(request: NextRequest) {
             category: body.category,
         })
 
-        // Store in database if projectId is provided
-        const projectId = request.nextUrl.searchParams.get('projectId')
-        if (projectId) {
-            // Verify project ownership
-            const project = await prisma.project.findFirst({
-                where: {
-                    id: projectId,
-                    user: {
-                        clerkId: userId,
-                    },
-                },
+        // Store in database linked to user
+        const storeInDB = request.nextUrl.searchParams.get('save') === 'true'
+        if (storeInDB) {
+            // Delete existing keywords for this user (optional - or keep accumulating)
+            // For now, we'll keep accumulating keywords
+
+            // Insert new keywords
+            await prisma.keyword.createMany({
+                data: keywords.map((k) => ({
+                    userId: user.id,
+                    term: k.term,
+                    score: k.score,
+                    clusterId: k.cluster_id,
+                    class: k.class,
+                    source: k.source,
+                    included: true,
+                })),
+                skipDuplicates: true, // Don't fail on duplicate keywords
             })
-
-            if (project) {
-                // Delete existing keywords for this project
-                await prisma.keyword.deleteMany({
-                    where: { projectId },
-                })
-
-                // Insert new keywords
-                await prisma.keyword.createMany({
-                    data: keywords.map((k) => ({
-                        projectId,
-                        term: k.term,
-                        score: k.score,
-                        clusterId: k.cluster_id,
-                        class: k.class,
-                        source: k.source,
-                        included: true,
-                    })),
-                })
-            }
         }
 
         return NextResponse.json({ keywords })
@@ -67,56 +51,30 @@ export async function POST(request: NextRequest) {
     }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
     try {
-        const { userId } = await auth()
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
+        const user = await getOrCreateUser()
 
-        const projectId = request.nextUrl.searchParams.get('projectId')
-        if (!projectId) {
-            return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
-        }
-
-        // Verify project ownership and fetch keywords
-        const project = await prisma.project.findFirst({
+        // Get all keywords for this user
+        const keywords = await prisma.keyword.findMany({
             where: {
-                id: projectId,
-                user: {
-                    clerkId: userId,
-                },
+                userId: user.id,
             },
-            include: {
-                keywords: {
-                    orderBy: {
-                        score: 'desc',
-                    },
-                },
+            orderBy: {
+                score: 'desc',
             },
         })
 
-        if (!project) {
-            return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-        }
-
-        const keywords = project.keywords.map((k: {
-            term: string
-            score: number
-            clusterId: string | null
-            class: string
-            source: string
-            included: boolean
-        }) => ({
-            term: k.term,
-            score: k.score,
-            cluster_id: k.clusterId || '',
-            class: k.class,
-            source: k.source,
-            included: k.included,
-        }))
-
-        return NextResponse.json({ keywords })
+        return NextResponse.json({
+            keywords: keywords.map((k) => ({
+                term: k.term,
+                score: k.score,
+                cluster_id: k.clusterId || '',
+                class: k.class,
+                source: k.source,
+                included: k.included,
+            }))
+        })
     } catch (error) {
         console.error('Error fetching keywords:', error)
         return NextResponse.json({ error: 'Failed to fetch keywords' }, { status: 500 })
