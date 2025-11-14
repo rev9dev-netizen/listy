@@ -10,13 +10,14 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(uuid())
-  clerkId   String    @unique
-  email     String    @unique
-  plan      String    @default("free")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  projects  Project[]
+  id          String        @id @default(uuid())
+  clerkId     String        @unique
+  email       String        @unique
+  plan        String        @default("free")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  projects    Project[]
+  PpcCampaigns PpcCampaign[] @relation("PpcCampaigns")
 
   @@map("users")
 }
@@ -141,4 +142,282 @@ model SearchHistory {
   @@index([userId])
   @@index([createdAt])
   @@map("search_history")
+}
+
+// ===========================
+// PPC Management Models
+// ===========================
+
+model PpcCampaign {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation("PpcCampaigns", fields: [userId], references: [id], onDelete: Cascade)
+  marketplace     String
+  asin            String
+  campaignName    String
+  campaignType    String    // Auto, Manual, SponsoredDisplay, SponsoredBrand
+  targetingType   String    // Auto, Manual, Keyword, Product, Audience
+  dailyBudget     Float
+  status          String    // Active, Paused, Archived
+  startDate       DateTime
+  endDate         DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  targetAcos      Float?    // Target ACOS percentage
+  
+  adGroups        PpcAdGroup[]
+  metrics         PpcCampaignMetric[]
+  automationRules PpcAutomationRule[]
+  dayparting      PpcDaypartingSchedule[]
+  auditReports    PpcAuditReport[]
+  
+  @@index([userId, marketplace])
+  @@index([asin])
+  @@map("ppc_campaigns")
+}
+
+model PpcAdGroup {
+  id          String       @id @default(uuid())
+  campaignId  String
+  campaign    PpcCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  name        String
+  defaultBid  Float
+  status      String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  keywords    PpcKeyword[]
+  targets     PpcTarget[]
+  metrics     PpcAdGroupMetric[]
+  
+  @@index([campaignId])
+  @@map("ppc_ad_groups")
+}
+
+model PpcKeyword {
+  id              String         @id @default(uuid())
+  adGroupId       String
+  adGroup         PpcAdGroup     @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+  keyword         String
+  matchType       String         // Exact, Phrase, Broad
+  bid             Float
+  status          String         // Active, Paused
+  qualityScore    Float?         // AI-generated quality score
+  profitScore     Float?         // AI-generated profit score
+  conversionProb  Float?         // AI prediction
+  lifecycle       String?        // Discovery, Growth, Maturity, Decline
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  
+  metrics         PpcKeywordMetric[]
+  bidHistory      PpcBidHistory[]
+  predictions     PpcAiBidPrediction[]
+  
+  @@index([adGroupId])
+  @@index([keyword])
+  @@map("ppc_keywords")
+}
+
+model PpcTarget {
+  id          String       @id @default(uuid())
+  adGroupId   String
+  adGroup     PpcAdGroup   @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+  targetType  String       // ASIN, Category
+  targetValue String
+  bid         Float
+  status      String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([adGroupId])
+  @@map("ppc_targets")
+}
+
+model PpcCampaignMetric {
+  id                String       @id @default(uuid())
+  campaignId        String
+  campaign          PpcCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  date              DateTime
+  impressions       Int
+  clicks            Int
+  spend             Float
+  sales             Float
+  orders            Int
+  ctr               Float
+  cpc               Float
+  acos              Float
+  roas              Float
+  conversionRate    Float
+  
+  @@unique([campaignId, date])
+  @@index([campaignId, date])
+  @@map("ppc_campaign_metrics")
+}
+
+model PpcAdGroupMetric {
+  id                String       @id @default(uuid())
+  adGroupId         String
+  adGroup           PpcAdGroup   @relation(fields: [adGroupId], references: [id], onDelete: Cascade)
+  date              DateTime
+  impressions       Int
+  clicks            Int
+  spend             Float
+  sales             Float
+  orders            Int
+  ctr               Float
+  cpc               Float
+  acos              Float
+  roas              Float
+  
+  @@unique([adGroupId, date])
+  @@index([adGroupId, date])
+  @@map("ppc_ad_group_metrics")
+}
+
+model PpcKeywordMetric {
+  id                String       @id @default(uuid())
+  keywordId         String
+  keyword           PpcKeyword   @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  date              DateTime
+  hour              Int?         // For hourly dayparting optimization
+  impressions       Int
+  clicks            Int
+  spend             Float
+  sales             Float
+  orders            Int
+  ctr               Float
+  cpc               Float
+  acos              Float
+  roas              Float
+  conversionRate    Float
+  cpm               Float?
+  attributedSales7d Float?
+  attributedUnits7d Int?
+  
+  @@unique([keywordId, date, hour])
+  @@index([keywordId, date])
+  @@map("ppc_keyword_metrics")
+}
+
+model PpcBidHistory {
+  id          String       @id @default(uuid())
+  keywordId   String
+  keyword     PpcKeyword   @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  oldBid      Float
+  newBid      Float
+  reason      String       // AI explanation of why bid was changed
+  ruleApplied String?      // Which automation rule triggered this
+  acos        Float?
+  createdAt   DateTime     @default(now())
+  
+  @@index([keywordId])
+  @@index([createdAt])
+  @@map("ppc_bid_history")
+}
+
+model PpcAutomationRule {
+  id          String       @id @default(uuid())
+  userId      String
+  campaignId  String?
+  campaign    PpcCampaign? @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  name        String
+  type        String       // BidAdjustment, PauseKeyword, BudgetShift, ConversionGuard
+  conditions  Json         // Complex rule conditions
+  actions     Json         // Actions to take
+  isActive    Boolean      @default(true)
+  priority    Int          @default(0)
+  lastRun     DateTime?
+  runsCount   Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([userId])
+  @@index([campaignId])
+  @@map("ppc_automation_rules")
+}
+
+model PpcDaypartingSchedule {
+  id          String       @id @default(uuid())
+  campaignId  String
+  campaign    PpcCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int          // 0-6 (Sunday-Saturday)
+  hour        Int          // 0-23
+  bidModifier Float        // Multiplier (0.5 = 50%, 1.5 = 150%)
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@unique([campaignId, dayOfWeek, hour])
+  @@map("ppc_dayparting_schedules")
+}
+
+model PpcCompetitorAlert {
+  id              String   @id @default(uuid())
+  userId          String
+  asin            String
+  competitorAsin  String
+  alertType       String   // BidIncrease, ImpressionLoss, RankDrop, CPCSpike
+  severity        String   // High, Medium, Low
+  message         String
+  data            Json
+  read            Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("ppc_competitor_alerts")
+}
+
+model PpcAiBidPrediction {
+  id                  String       @id @default(uuid())
+  keywordId           String
+  keyword             PpcKeyword   @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  predictedCPC        Float
+  predictedClicks     Int
+  predictedSales      Float
+  predictedAcos       Float
+  recommendedBid      Float
+  confidence          Float        // 0-1
+  reasoning           String?      // AI explanation
+  predictionDate      DateTime     // For which date/hour
+  createdAt           DateTime     @default(now())
+  
+  @@index([keywordId])
+  @@index([predictionDate])
+  @@map("ppc_ai_bid_predictions")
+}
+
+model PpcProfitCalculation {
+  id              String   @id @default(uuid())
+  userId          String
+  asin            String
+  productCost     Float    // COGS
+  amazonFees      Float
+  shippingCost    Float
+  miscCosts       Float
+  sellingPrice    Float
+  profitMargin    Float    // Calculated
+  breakEvenAcos   Float    // Calculated
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([userId, asin])
+  @@index([userId])
+  @@map("ppc_profit_calculations")
+}
+
+model PpcAuditReport {
+  id              String   @id @default(uuid())
+  userId          String
+  campaignId      String
+  campaign        PpcCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  overallScore    Int      // 0-100
+  findings        Json     // Audit findings and issues
+  recommendations String[] // Array of recommendation strings
+  createdAt       DateTime @default(now())
+  
+  @@index([userId])
+  @@index([campaignId])
+  @@index([createdAt])
+  @@map("ppc_audit_reports")
 }

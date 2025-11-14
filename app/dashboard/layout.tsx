@@ -13,6 +13,7 @@ import {
   FolderIcon,
   MoonIcon,
   SunIcon,
+  TrendingUpIcon,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -21,6 +22,7 @@ const navigation = [
   { name: "Projects", href: "/dashboard/projects", icon: FolderIcon },
   { name: "Keywords", href: "/dashboard/keywords", icon: KeyIcon },
   { name: "Listing Builder", href: "/dashboard/listing", icon: FileTextIcon },
+  { name: "PPC Manager", href: "/dashboard/ppc", icon: TrendingUpIcon },
 ];
 
 export default function DashboardLayout({

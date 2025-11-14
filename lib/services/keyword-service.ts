@@ -220,7 +220,7 @@ export async function analyzeCompetitorASIN(asin: string, marketplace = 'US'): P
 
         const data: RawKeywordData[] = rankedItems.map((item, index) => ({
             term: item.keyword_data.keyword,
-            frequency: item.keyword_data.search_volume || 0,
+            frequency: item.keyword_data.keyword_info?.search_volume || 0,
             position: item.ranked_serp_element?.serp_item?.rank_absolute || index + 1,
             source: asin,
         }))
