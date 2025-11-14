@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/databse/prisma";
 
 // Amazon Ads API would be required for real search terms data
 // This endpoint shows proper error handling when API is not configured

@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/databse/prisma'
 import { generateKeywords } from '@/lib/services/keyword-service'
 import type { KeywordGenerationRequest } from '@/lib/types'
 

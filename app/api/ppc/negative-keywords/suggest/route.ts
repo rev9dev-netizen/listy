@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
-import { openai } from "@/lib/openai";
+import { prisma } from "@/lib/databse/prisma";
+import { openai } from "@/lib/models/openai";
 
 // POST - AI-powered negative keyword suggestions
 export async function POST(request: Request) {

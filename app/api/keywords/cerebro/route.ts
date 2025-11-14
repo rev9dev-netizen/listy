@@ -5,8 +5,8 @@ import {
     fetchRankedKeywords,
     type KeywordIntersectionItem
 } from '@/lib/dataforseo'
-import { cache } from '@/lib/redis'
-import { prisma } from '@/lib/prisma'
+import { cache } from '@/lib/databse/redis'
+import { prisma } from '@/lib/databse/prisma'
 
 type CerebroRequest = {
     asins: string[]

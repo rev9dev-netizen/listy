@@ -6,8 +6,15 @@ import {
   FileTextIcon,
   CheckCircleIcon,
 } from "lucide-react";
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
-export default function Home() {
+export default async function Home() {
+  // Redirect authenticated users to dashboard
+  const { userId } = await auth();
+  if (userId) {
+    redirect("/dashboard");
+  }
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
@@ -18,6 +25,9 @@ export default function Home() {
             <span className="text-xl font-bold">Listy</span>
           </div>
           <nav className="flex items-center gap-4">
+            <Link href="/dashboard">
+              <Button variant="ghost">Dashboard</Button>
+            </Link>
             <Link href="/sign-in">
               <Button variant="ghost">Sign In</Button>
             </Link>

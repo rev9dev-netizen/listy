@@ -1,5 +1,5 @@
-import { openai } from '../openai'
-import { cache } from '../redis'
+import { openai } from '../models/openai'
+import { cache } from '../databse/redis'
 import type { ListingDraft, ListingDraftRequest, ValidationIssue } from '../types'
 
 /**

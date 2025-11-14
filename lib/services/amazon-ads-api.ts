@@ -3,7 +3,7 @@
  * Documentation: https://advertising.amazon.com/API/docs/en-us/
  */
 
-import { cache } from "../redis";
+import { cache } from "../databse/redis";
 
 const AMAZON_ADS_API_BASE = {
     NA: "https://advertising-api.amazon.com",

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/databse/prisma'
 import crypto from 'node:crypto'
 
 // Simple stable JSON stringify for hashing

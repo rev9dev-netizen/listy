@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { ppcChatAssistant } from "@/lib/services/ppc-ai-engine";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/databse/prisma";
 
 // POST - PPC Chat Assistant
 export async function POST(req: NextRequest) {

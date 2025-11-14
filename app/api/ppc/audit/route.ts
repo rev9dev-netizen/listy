@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/databse/prisma";
 import { calculateKeywordQualityScore } from "@/lib/services/ppc-ai-engine";
 
 export async function POST(request: NextRequest) {

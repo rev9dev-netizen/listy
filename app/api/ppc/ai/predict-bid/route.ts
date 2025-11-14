@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/databse/prisma";
 import { predictOptimalBid } from "@/lib/services/ppc-ai-engine";
 
 export async function POST(request: NextRequest) {

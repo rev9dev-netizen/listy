@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/databse/prisma";
 
 // Default PPC settings
 const DEFAULT_SETTINGS = {

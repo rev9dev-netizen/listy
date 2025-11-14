@@ -16,10 +16,10 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
 interface ListingSummary {
-  projectId: string;
+  id: string;
   title: string;
   version: number;
-  marketplace: string;
+  finalized: boolean;
   updatedAt: string;
 }
 
@@ -35,28 +35,26 @@ export default function ListingsDashboardPage() {
 
   const load = useCallback(async () => {
     try {
-      const projectsRes = await fetch("/api/projects");
-      const pj = await projectsRes.json();
-      const summaries: ListingSummary[] = [];
-      for (const p of pj.projects || []) {
-        const draftRes = await fetch(`/api/listing/draft?projectId=${p.id}`);
-        let title = "";
-        let version = 0;
-        let updatedAt = p.updatedAt;
-        if (draftRes.ok) {
-          const d = await draftRes.json();
-          title = d.title || "";
-          version = d.version || 0;
-          updatedAt = d.updatedAt || p.updatedAt;
-        }
-        summaries.push({
-          projectId: p.id,
-          title,
-          version,
-          marketplace: p.marketplace || "US",
-          updatedAt: new Date(updatedAt).toLocaleString(),
-        });
-      }
+      const res = await fetch("/api/listing/create");
+      if (!res.ok) throw new Error("Failed to load listings");
+
+      const { listings } = await res.json();
+      const summaries: ListingSummary[] = listings.map(
+        (listing: {
+          id: string;
+          title: string;
+          version: number;
+          finalized: boolean;
+          updatedAt: string;
+        }) => ({
+          id: listing.id,
+          title: listing.title || "(Untitled Listing)",
+          version: listing.version,
+          finalized: listing.finalized,
+          updatedAt: new Date(listing.updatedAt).toLocaleString(),
+        })
+      );
+
       setData(summaries);
     } catch (e) {
       console.error("Failed to load listings dashboard", e);
@@ -98,7 +96,7 @@ export default function ListingsDashboardPage() {
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th className="py-2 text-left font-medium">Title</th>
-                <th className="py-2 text-left font-medium">Marketplace</th>
+                <th className="py-2 text-left font-medium">Status</th>
                 <th className="py-2 text-left font-medium">Version</th>
                 <th className="py-2 text-left font-medium">Last Updated</th>
                 <th className="py-2 text-right font-medium">Actions</th>
@@ -123,13 +121,14 @@ export default function ListingsDashboardPage() {
                     colSpan={5}
                     className="py-6 text-center text-muted-foreground"
                   >
-                    No listings yet.
+                    No listings yet. Click &quot;Add a Listing&quot; to get
+                    started!
                   </td>
                 </tr>
               )}
               {data &&
                 data.map((l) => (
-                  <tr key={l.projectId} className="border-b hover:bg-muted/50">
+                  <tr key={l.id} className="border-b hover:bg-muted/50">
                     <td className="py-2 max-w-xs truncate">
                       {l.title || (
                         <span className="text-muted-foreground">
@@ -137,17 +136,25 @@ export default function ListingsDashboardPage() {
                         </span>
                       )}
                     </td>
-                    <td className="py-2">{l.marketplace}</td>
-                    <td className="py-2">{l.version}</td>
+                    <td className="py-2">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                          l.finalized
+                            ? "bg-green-100 text-green-700"
+                            : "bg-yellow-100 text-yellow-700"
+                        }`}
+                      >
+                        {l.finalized ? "Finalized" : "Draft"}
+                      </span>
+                    </td>
+                    <td className="py-2">v{l.version}</td>
                     <td className="py-2">{l.updatedAt}</td>
                     <td className="py-2 text-right">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() =>
-                          router.push(
-                            `/dashboard/listing/builder?projectId=${l.projectId}`
-                          )
+                          router.push(`/dashboard/listing/builder?id=${l.id}`)
                         }
                       >
                         Edit
@@ -245,36 +252,35 @@ export default function ListingsDashboardPage() {
               onClick={async () => {
                 setCreating(true);
                 try {
-                  const res = await fetch("/api/projects", {
+                  // Create new listing
+                  const res = await fetch("/api/listing/create", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ marketplace }),
+                    body: JSON.stringify({
+                      marketplace,
+                      mode: createMode,
+                      asin: createMode === "fetch" ? asin : undefined,
+                    }),
                   });
-                  if (!res.ok) throw new Error("Failed to create project");
-                  const pj = await res.json();
 
-                  // If fetch mode, import initial content from Amazon using ASIN
-                  if (createMode === "fetch") {
-                    if (!asin) throw new Error("Please provide an ASIN");
-                    const importRes = await fetch("/api/listing/import", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        projectId: pj.id,
-                        asin,
-                        marketplace,
-                      }),
-                    });
-                    if (!importRes.ok) {
-                      const { error } = await importRes
-                        .json()
-                        .catch(() => ({ error: "Import failed" }));
-                      throw new Error(error || "Failed to import listing");
-                    }
+                  if (!res.ok) {
+                    const { error } = await res
+                      .json()
+                      .catch(() => ({ error: "Failed to create listing" }));
+                    throw new Error(error);
                   }
-                  toast.success("Listing created");
+
+                  const { id, asin: importedAsin } = await res.json();
+
+                  // If fetch mode and we have ASIN, we may need to import
+                  if (createMode === "fetch" && importedAsin) {
+                    // The import is already handled in the create endpoint
+                    // Or you can call the import endpoint here if needed
+                  }
+
+                  toast.success("Listing created successfully!");
                   setCreateOpen(false);
-                  router.push(`/dashboard/listing/builder?projectId=${pj.id}`);
+                  router.push(`/dashboard/listing/builder?id=${id}`);
                 } catch (e) {
                   const msg = e instanceof Error ? e.message : "Create failed";
                   toast.error(msg);

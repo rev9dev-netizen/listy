@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cache } from '@/lib/redis'
+import { cache } from '@/lib/databse/redis'
 import { fetchVolumes, fetchAmazonBulkVolumes } from '@/lib/dataforseo'
 
 const TTL = Number(process.env.KEYWORD_CACHE_TTL_SECONDS || 60 * 60 * 24 * 7)

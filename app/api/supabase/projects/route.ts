@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/databse/supabase'
 
 // Example Supabase-based project list (parallel to Prisma version)
 export async function GET() {

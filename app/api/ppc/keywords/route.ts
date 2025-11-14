@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/databse/prisma";
 import { calculateKeywordProfit } from "@/lib/services/ppc-keyword-quality";
 
 export async function GET(request: NextRequest) {

@@ -10,7 +10,6 @@ import {
   LayoutDashboardIcon,
   KeyIcon,
   FileTextIcon,
-  FolderIcon,
   MoonIcon,
   SunIcon,
   TrendingUpIcon,
@@ -19,7 +18,6 @@ import { useTheme } from "next-themes";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon },
-  { name: "Projects", href: "/dashboard/projects", icon: FolderIcon },
   { name: "Keywords", href: "/dashboard/keywords", icon: KeyIcon },
   { name: "Listing Builder", href: "/dashboard/listing", icon: FileTextIcon },
   { name: "PPC Manager", href: "/dashboard/ppc", icon: TrendingUpIcon },

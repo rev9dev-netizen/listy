@@ -1,139 +1,142 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { generateListingDraft } from '@/lib/services/listing-service'
-import type { ListingDraftRequest } from '@/lib/types'
+import { prisma } from '@/lib/databse/prisma'
+import { generateAmazonListing } from '@/lib/services/ai-listing-service'
+import { getOrCreateUser } from '@/lib/auth-helpers'
+
+interface GenerateListingRequest {
+    productName: string;
+    brand?: string;
+    category: string;
+    keywords: Array<{
+        phrase: string;
+        searchVolume?: number;
+        selected: boolean;
+    }>;
+    features?: string[];
+    benefits?: string[];
+    targetAudience?: string;
+    uniqueSellingPoints?: string[];
+    templateId?: string;
+    marketplace?: string;
+}
 
 export async function POST(request: NextRequest) {
     try {
-        const { userId } = await auth()
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
-
-        const body = (await request.json()) as ListingDraftRequest
+        const user = await getOrCreateUser()
+        const body = (await request.json()) as GenerateListingRequest
 
         // Validate request
-        if (!body.marketplace || !body.brand || !body.product_type) {
+        if (!body.productName || !body.category) {
             return NextResponse.json(
-                { error: 'Marketplace, brand, and product_type are required' },
+                { error: 'Product name and category are required' },
                 { status: 400 }
             )
         }
 
-        // Generate listing
-        const draft = await generateListingDraft(body)
-
-        // Store in database if projectId is provided
-        const projectId = request.nextUrl.searchParams.get('projectId')
-        if (projectId) {
-            // Verify project ownership
-            const project = await prisma.project.findFirst({
-                where: {
-                    id: projectId,
-                    user: {
-                        clerkId: userId,
-                    },
-                },
-            })
-
-            if (project) {
-                // Get current version
-                const lastDraft = await prisma.draft.findFirst({
-                    where: { projectId },
-                    orderBy: { version: 'desc' },
-                })
-
-                const newVersion = (lastDraft?.version || 0) + 1
-
-                // Create new draft
-                const created = await prisma.draft.create({
-                    data: {
-                        projectId,
-                        title: draft.title,
-                        bullets: draft.bullets,
-                        description: draft.description,
-                        version: newVersion,
-                    },
-                })
-                return NextResponse.json({
-                    ...draft,
-                    version: created.version,
-                    id: created.id
-                })
-            }
+        if (!body.keywords || body.keywords.filter(k => k.selected).length === 0) {
+            return NextResponse.json(
+                { error: 'At least one keyword must be selected' },
+                { status: 400 }
+            )
         }
-        return NextResponse.json(draft)
+
+        // Generate listing with AI
+        const generated = await generateAmazonListing(body)
+
+        // Get current version for user
+        const lastDraft = await prisma.draft.findFirst({
+            where: { userId: user.id },
+            orderBy: { version: 'desc' },
+        })
+
+        const newVersion = (lastDraft?.version || 0) + 1
+
+        // Create new draft linked to user
+        const created = await prisma.draft.create({
+            data: {
+                userId: user.id,
+                title: generated.title,
+                bullets: generated.bullets as any,
+                description: generated.description,
+                backendTerms: generated.backendTerms,
+                keywords: body.keywords as any,
+                finalized: false,
+                version: newVersion,
+            },
+        })
+
+        return NextResponse.json({
+            id: created.id,
+            title: generated.title,
+            bullets: generated.bullets,
+            description: generated.description,
+            backendTerms: generated.backendTerms,
+            keywords: body.keywords,
+            version: created.version,
+            warnings: generated.warnings,
+            keywordUsage: generated.keywordUsage,
+        })
     } catch (error) {
         console.error('Error generating listing:', error)
-        return NextResponse.json({ error: 'Failed to generate listing' }, { status: 500 })
+        return NextResponse.json({
+            error: error instanceof Error ? error.message : 'Failed to generate listing'
+        }, { status: 500 })
     }
 }
 
 export async function GET(request: NextRequest) {
     try {
-        const { userId } = await auth()
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        const user = await getOrCreateUser()
+        const draftId = request.nextUrl.searchParams.get('id')
+
+        if (draftId) {
+            // Get specific draft by ID
+            const draft = await prisma.draft.findFirst({
+                where: {
+                    id: draftId,
+                    userId: user.id,
+                },
+            })
+
+            if (!draft) {
+                return NextResponse.json({ error: 'Draft not found' }, { status: 404 })
+            }
+
+            return NextResponse.json({
+                id: draft.id,
+                title: draft.title,
+                bullets: draft.bullets,
+                description: draft.description,
+                backendTerms: draft.backendTerms,
+                keywords: draft.keywords || [],
+                version: draft.version,
+                finalized: draft.finalized,
+                createdAt: draft.createdAt,
+                updatedAt: draft.updatedAt,
+            })
         }
 
-        const projectId = request.nextUrl.searchParams.get('projectId')
-        if (!projectId) {
-            return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
-        }
-
-        // Verify project ownership and fetch latest draft
-        const project = await prisma.project.findFirst({
-            where: {
-                id: projectId,
-                user: {
-                    clerkId: userId,
-                },
-            },
-            include: {
-                drafts: {
-                    orderBy: {
-                        version: 'desc',
-                    },
-                    take: 1,
-                },
-            },
+        // Get all drafts for user
+        const drafts = await prisma.draft.findMany({
+            where: { userId: user.id },
+            orderBy: { updatedAt: 'desc' },
         })
 
-        if (!project) {
-            return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-        }
-
-        if (project.drafts.length === 0) {
-            return NextResponse.json({ error: 'No drafts found' }, { status: 404 })
-        }
-
-        const draft = project.drafts[0]
-        return NextResponse.json({
-            title: draft.title,
-            bullets: draft.bullets,
-            description: draft.description,
-            keywords: draft.keywords || [],
-            version: draft.version,
-            updatedAt: draft.updatedAt
-        })
+        return NextResponse.json({ drafts })
     } catch (error) {
-        console.error('Error fetching draft:', error)
-        return NextResponse.json({ error: 'Failed to fetch draft' }, { status: 500 })
+        console.error('Error fetching drafts:', error)
+        return NextResponse.json({ error: 'Failed to fetch drafts' }, { status: 500 })
     }
 }
 
 export async function PATCH(request: NextRequest) {
     try {
-        const { userId } = await auth()
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-        }
+        const user = await getOrCreateUser()
+        const draftId = request.nextUrl.searchParams.get('id')
 
-        const projectId = request.nextUrl.searchParams.get('projectId')
-        if (!projectId) {
-            return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
+        if (!draftId) {
+            return NextResponse.json({ error: 'Draft ID is required' }, { status: 400 })
         }
 
         const body = (await request.json()) as {
@@ -143,50 +146,39 @@ export async function PATCH(request: NextRequest) {
             backendTerms?: string | null
             keywords?: Array<{
                 phrase: string
-                searchVolume: number
-                sales: number
-                cps: number | null
+                searchVolume?: number
                 selected: boolean
             }>
+            finalized?: boolean
         }
 
-        // Verify ownership and get latest draft
-        const project = await prisma.project.findFirst({
-            where: { id: projectId, user: { clerkId: userId } },
-            include: { drafts: { orderBy: { version: 'desc' }, take: 1 } },
+        // Verify ownership
+        const existing = await prisma.draft.findFirst({
+            where: { id: draftId, userId: user.id },
         })
-        if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
-        // Ensure or create a single editing draft (finalized=false) not tied to versioning
-        let editing = await prisma.draft.findFirst({ where: { projectId, finalized: false } })
-        if (!editing) {
-            const lastFinal = await prisma.draft.findFirst({ where: { projectId, finalized: true }, orderBy: { version: 'desc' } })
-            editing = await prisma.draft.create({
-                data: {
-                    projectId,
-                    title: body.title ?? (lastFinal?.title ?? ''),
-                    bullets: (body.bullets ?? (lastFinal?.bullets as any) ?? []),
-                    description: body.description ?? (lastFinal?.description ?? ''),
-                    backendTerms: body.backendTerms ?? (lastFinal?.backendTerms ?? null),
-                    keywords: (body.keywords ?? (lastFinal?.keywords as any) ?? []),
-                    finalized: false,
-                    version: (lastFinal?.version ?? 0) // version is irrelevant for editing
-                }
-            })
-        } else {
-            editing = await prisma.draft.update({
-                where: { id: editing.id },
-                data: {
-                    title: body.title ?? editing.title,
-                    bullets: (body.bullets ?? editing.bullets) as unknown as object,
-                    description: body.description ?? editing.description,
-                    backendTerms: (body.backendTerms ?? editing.backendTerms) as unknown as string | null,
-                    keywords: (body.keywords ?? editing.keywords) as unknown as object,
-                }
-            })
+        if (!existing) {
+            return NextResponse.json({ error: 'Draft not found' }, { status: 404 })
         }
 
-        return NextResponse.json({ id: editing.id, version: editing.version })
+        // Update draft
+        const updated = await prisma.draft.update({
+            where: { id: draftId },
+            data: {
+                title: body.title ?? existing.title,
+                bullets: (body.bullets ?? existing.bullets) as unknown as object,
+                description: body.description ?? existing.description,
+                backendTerms: body.backendTerms !== undefined ? body.backendTerms : existing.backendTerms,
+                keywords: (body.keywords ?? existing.keywords) as unknown as object,
+                finalized: body.finalized ?? existing.finalized,
+            },
+        })
+
+        return NextResponse.json({
+            id: updated.id,
+            version: updated.version,
+            finalized: updated.finalized,
+        })
     } catch (error) {
         console.error('Error updating draft:', error)
         return NextResponse.json({ error: 'Failed to update draft' }, { status: 500 })

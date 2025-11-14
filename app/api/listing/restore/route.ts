@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma } from '@/lib/databse/prisma'
 
 // POST: restore a version by creating a new head version copying its content
 export async function POST(request: NextRequest) {

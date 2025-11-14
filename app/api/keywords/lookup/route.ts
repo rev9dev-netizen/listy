@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cache } from '@/lib/redis'
+import { cache } from '@/lib/databse/redis'
 import { fetchVolumes, fetchAmazonBulkVolumes } from '@/lib/dataforseo'
 
 type Req = { phrases: string[]; marketplace?: string; force?: boolean; provider?: 'googleads' | 'labs-amazon' }
