@@ -42,9 +42,9 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        const totalSpend = campaigns.reduce((sum, c) => {
-            return sum + c.metrics.reduce((s, m) => s + m.spend, 0);
-        }, 0);
+        const totalSpend = campaigns.reduce((sum: number, c) => {
+            return sum + c.metrics.reduce((s: number, m) => s + m.spend, 0);
+        }, 0)
 
         const avgAcos =
             campaigns.reduce((sum, c) => {

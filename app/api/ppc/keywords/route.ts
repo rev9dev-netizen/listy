@@ -31,16 +31,79 @@ export async function POST(request: NextRequest) {
         if (!userId) { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
 
         const body = await request.json();
-        const { adGroupId, keyword, matchType, bid } = body;
-        if (!adGroupId || !keyword || !matchType || !bid) { return NextResponse.json({ error: "Missing required fields" }, { status: 400 }); }
+        const { adGroupId, keywords } = body;
 
-        const adGroup = await prisma.ppcAdGroup.findFirst({ where: { id: adGroupId, campaign: { userId } } });
+        // Support both single keyword and bulk creation
+        const keywordsList = Array.isArray(keywords) ? keywords : [{ keyword: body.keyword, matchType: body.matchType, bid: body.bid, status: body.status }];
+
+        if (!adGroupId || keywordsList.length === 0) {
+            return NextResponse.json({ error: "Missing required fields: adGroupId and keywords" }, { status: 400 });
+        }
+
+        const adGroup = await prisma.ppcAdGroup.findFirst({
+            where: { id: adGroupId, campaign: { userId } },
+            include: { campaign: true }
+        });
         if (!adGroup) { return NextResponse.json({ error: "Ad group not found" }, { status: 404 }); }
 
-        const newKeywordRecord = await prisma.ppcKeyword.create({ data: { keyword, matchType, bid, status: "Active", adGroupId }, include: { adGroup: { include: { campaign: true } } } });
-        return NextResponse.json({ keyword: newKeywordRecord });
+        const createdKeywords = [];
+        const errors = [];
+
+        for (const kw of keywordsList) {
+            try {
+                const { keyword, matchType = "BROAD", bid, status = "ENABLED" } = kw;
+                if (!keyword || !bid) {
+                    errors.push({ keyword: keyword || "unknown", error: "Missing keyword or bid" });
+                    continue;
+                }
+
+                const bidAmount = parseFloat(bid);
+                if (isNaN(bidAmount) || bidAmount <= 0) {
+                    errors.push({ keyword, error: "Invalid bid amount" });
+                    continue;
+                }
+
+                // Calculate AI quality score (placeholder for now)
+                const qualityScore = 50;
+
+                const newKeywordRecord = await prisma.ppcKeyword.create({
+                    data: {
+                        keyword,
+                        matchType,
+                        bid: bidAmount,
+                        status,
+                        qualityScore,
+                        lifecycle: "DISCOVERY",
+                        adGroupId,
+                    },
+                    include: { adGroup: { include: { campaign: true } } }
+                });
+
+                // Create initial bid history
+                await prisma.ppcBidHistory.create({
+                    data: {
+                        keywordId: newKeywordRecord.id,
+                        oldBid: 0,
+                        newBid: bidAmount,
+                        reason: "Initial keyword creation",
+                    },
+                });
+
+                createdKeywords.push(newKeywordRecord);
+            } catch (error) {
+                errors.push({ keyword: kw.keyword, error: error instanceof Error ? error.message : "Unknown error" });
+            }
+        }
+
+        return NextResponse.json({
+            success: true,
+            created: createdKeywords.length,
+            failed: errors.length,
+            keywords: createdKeywords,
+            errors: errors.length > 0 ? errors : undefined,
+        });
     } catch (error) {
-        console.error("Failed to create keyword:", error);
-        return NextResponse.json({ error: "Failed to create keyword" }, { status: 500 });
+        console.error("Failed to create keywords:", error);
+        return NextResponse.json({ error: "Failed to create keywords" }, { status: 500 });
     }
 }

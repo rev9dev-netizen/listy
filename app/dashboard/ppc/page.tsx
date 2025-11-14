@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { CreateCampaignDialog } from "./components/create-campaign-dialog";
+import CampaignStrategyWizard from "./components/campaign-strategy-wizard";
 import {
   Table,
   TableBody,
@@ -23,6 +24,7 @@ import {
   AlertCircle,
   Sparkles,
   MessageSquare,
+  Wand2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -129,12 +131,24 @@ export default function PPCDashboardPage() {
             AI-powered PPC optimization and management
           </p>
         </div>
-        <CreateCampaignDialog>
-          <Button>
-            <Sparkles className="w-4 h-4 mr-2" />
-            Create Campaign
-          </Button>
-        </CreateCampaignDialog>
+        <div className="flex gap-2">
+          <CampaignStrategyWizard
+            onComplete={() => {
+              queryClient.invalidateQueries({ queryKey: ["ppc-campaigns"] });
+            }}
+          >
+            <Button variant="outline">
+              <Wand2 className="w-4 h-4 mr-2" />
+              AI Strategy
+            </Button>
+          </CampaignStrategyWizard>
+          <CreateCampaignDialog>
+            <Button>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Create Campaign
+            </Button>
+          </CreateCampaignDialog>
+        </div>
       </div>
 
       {/* Metrics Overview */}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,14 +14,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, Play, Pause, TrendingUp, TrendingDown } from "lucide-react";
+import {
+  ArrowLeft,
+  Play,
+  Pause,
+  TrendingUp,
+  TrendingDown,
+  Sparkles,
+} from "lucide-react";
 import { toast } from "sonner";
 import CreateAdGroupDialog from "../../components/create-ad-group-dialog";
+import AuditResultsModal from "../../components/audit-results-modal";
 
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
   const campaignId = params.id as string;
+  const [showAudit, setShowAudit] = useState(false);
 
   // Fetch campaign details
   const { data: campaignsData, isLoading } = useQuery({
@@ -119,11 +129,23 @@ export default function CampaignDetailPage() {
             )}
           </Button>
           <Button variant="outline">Edit Campaign</Button>
+          <Button variant="outline" onClick={() => setShowAudit(true)}>
+            <Sparkles className="w-4 h-4 mr-2" />
+            Run Audit
+          </Button>
           <CreateAdGroupDialog campaignId={campaignId}>
             <Button>Create Ad Group</Button>
           </CreateAdGroupDialog>
         </div>
       </div>
+
+      {/* Audit Modal */}
+      <AuditResultsModal
+        open={showAudit}
+        onOpenChange={setShowAudit}
+        campaignId={campaignId}
+        campaignName={campaign.campaignName}
+      />
 
       {/* Metrics */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -220,7 +242,15 @@ export default function CampaignDetailPage() {
                       <TableCell>{adGroup.keywords?.length || 0}</TableCell>
                       <TableCell>${adGroup.defaultBid.toFixed(2)}</TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/ppc/ad-groups/${adGroup.id}`
+                            )
+                          }
+                        >
                           Manage
                         </Button>
                       </TableCell>
