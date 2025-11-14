@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import AuditResultsModal from "../../components/audit-results-modal";
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const campaignId = params.id as string;
   const [showAudit, setShowAudit] = useState(false);
 
@@ -41,6 +42,32 @@ export default function CampaignDetailPage() {
       return response.json();
     },
   });
+
+  // Pause/Resume campaign mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async (newStatus: string) => {
+      const response = await fetch(`/api/ppc/campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!response.ok) throw new Error("Failed to update campaign status");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ppc-campaigns"] });
+      toast.success("Campaign status updated successfully");
+    },
+    onError: () => {
+      toast.error("Failed to update campaign status");
+    },
+  });
+
+  const handleToggleStatus = () => {
+    if (!campaign) return;
+    const newStatus = campaign.status === "Active" ? "Paused" : "Active";
+    updateStatusMutation.mutate(newStatus);
+  };
 
   const campaign = campaignsData?.campaigns?.find(
     (c: { id: string }) => c.id === campaignId
@@ -115,16 +142,20 @@ export default function CampaignDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button
+            variant="outline"
+            onClick={handleToggleStatus}
+            disabled={updateStatusMutation.isPending}
+          >
             {campaign.status === "Active" ? (
               <>
                 <Pause className="w-4 h-4 mr-2" />
-                Pause
+                {updateStatusMutation.isPending ? "Pausing..." : "Pause"}
               </>
             ) : (
               <>
                 <Play className="w-4 h-4 mr-2" />
-                Resume
+                {updateStatusMutation.isPending ? "Resuming..." : "Resume"}
               </>
             )}
           </Button>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { CreateCampaignDialog } from "./components/create-campaign-dialog";
 import CampaignStrategyWizard from "./components/campaign-strategy-wizard";
 import {
@@ -25,12 +26,27 @@ import {
   Sparkles,
   MessageSquare,
   Wand2,
+  Bot,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
+
 export default function PPCDashboardPage() {
   const [chatQuestion, setChatQuestion] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   // Fetch campaigns
   const {
@@ -58,10 +74,15 @@ export default function PPCDashboardPage() {
       return response.json();
     },
     onSuccess: (data) => {
-      toast.success("AI Response", {
-        description: data.answer,
-        duration: 10000,
-      });
+      // Add assistant message to chat history
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: data.answer,
+          timestamp: new Date(),
+        },
+      ]);
     },
     onError: () => {
       toast.error("Failed to get AI response");
@@ -70,6 +91,17 @@ export default function PPCDashboardPage() {
 
   const handleAskAI = () => {
     if (!chatQuestion.trim()) return;
+
+    // Add user message to chat history
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: chatQuestion,
+        timestamp: new Date(),
+      },
+    ]);
+
     chatMutation.mutate(chatQuestion);
     setChatQuestion("");
   };
@@ -219,6 +251,49 @@ export default function PPCDashboardPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {/* Chat Messages */}
+          {chatMessages.length > 0 && (
+            <ScrollArea className="h-[300px] mb-4 border rounded-lg p-4">
+              <div className="space-y-4">
+                {chatMessages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`flex gap-3 ${
+                      message.role === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    {message.role === "assistant" && (
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                        <Bot className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                    <div
+                      className={`max-w-[80%] rounded-lg p-3 ${
+                        message.role === "user"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted"
+                      }`}
+                    >
+                      <p className="text-sm whitespace-pre-wrap">
+                        {message.content}
+                      </p>
+                      <p className="text-xs opacity-70 mt-1">
+                        {message.timestamp.toLocaleTimeString()}
+                      </p>
+                    </div>
+                    {message.role === "user" && (
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+            </ScrollArea>
+          )}
+
+          {/* Input Area */}
           <div className="flex gap-2">
             <Input
               placeholder="Ask anything: Why is my ACOS high? Which keywords should I pause?"
@@ -234,6 +309,8 @@ export default function PPCDashboardPage() {
               {chatMutation.isPending ? "Thinking..." : "Ask AI"}
             </Button>
           </div>
+
+          {/* Quick Questions */}
           <div className="mt-4 flex flex-wrap gap-2">
             <Badge
               variant="secondary"
