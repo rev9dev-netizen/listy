@@ -19,7 +19,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ArrowLeft, Plus, MoreVertical, Power, PowerOff, Trash2, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  MoreVertical,
+  Power,
+  PowerOff,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import CreateAutomationRuleDialog from "../components/create-automation-rule-dialog";
@@ -85,7 +93,13 @@ export default function AutomationPage() {
   const rules: AutomationRule[] = rulesData?.rules || [];
 
   const getRuleTypeBadge = (type: string) => {
-    const badges: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+    const badges: Record<
+      string,
+      {
+        label: string;
+        variant: "default" | "secondary" | "destructive" | "outline";
+      }
+    > = {
       BidAdjustment: { label: "Bid Adjustment", variant: "default" },
       PauseKeyword: { label: "Pause Keyword", variant: "destructive" },
       BudgetShift: { label: "Budget Shift", variant: "secondary" },
@@ -97,7 +111,12 @@ export default function AutomationPage() {
 
   const formatConditions = (conditions: AutomationRule["conditions"]) => {
     return conditions
-      .map((c) => `${c.metric} ${c.operator} ${c.threshold}${c.metric.toLowerCase().includes("acos") ? "%" : ""}`)
+      .map(
+        (c) =>
+          `${c.metric} ${c.operator} ${c.threshold}${
+            c.metric.toLowerCase().includes("acos") ? "%" : ""
+          }`
+      )
       .join(" AND ");
   };
 
@@ -106,7 +125,8 @@ export default function AutomationPage() {
       .map((a) => {
         if (a.type === "AdjustBid") return `Adjust bid by ${a.value}%`;
         if (a.type === "PauseKeyword") return "Pause keyword";
-        if (a.type === "IncreaseBudget") return `Increase budget by ${a.value}%`;
+        if (a.type === "IncreaseBudget")
+          return `Increase budget by ${a.value}%`;
         if (a.type === "SendAlert") return `Send alert: ${a.value}`;
         return a.type;
       })
@@ -139,7 +159,8 @@ export default function AutomationPage() {
           <div>
             <h1 className="text-3xl font-bold">Automation Rules</h1>
             <p className="text-muted-foreground">
-              Set up automatic bid adjustments, keyword pausing, and budget shifts
+              Set up automatic bid adjustments, keyword pausing, and budget
+              shifts
             </p>
           </div>
         </div>
@@ -167,7 +188,9 @@ export default function AutomationPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{rules.length}</div>
-            <p className="text-xs text-muted-foreground">All automation rules</p>
+            <p className="text-xs text-muted-foreground">
+              All automation rules
+            </p>
           </CardContent>
         </Card>
 
@@ -218,9 +241,12 @@ export default function AutomationPage() {
           {rules.length === 0 ? (
             <div className="text-center py-12">
               <Zap className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No automation rules yet</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                No automation rules yet
+              </h3>
               <p className="text-muted-foreground mb-4">
-                Create your first rule to automate bid adjustments and campaign management
+                Create your first rule to automate bid adjustments and campaign
+                management
               </p>
               <Button onClick={() => setDialogOpen(true)}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -249,7 +275,9 @@ export default function AutomationPage() {
                     <TableCell>{getRuleTypeBadge(rule.type)}</TableCell>
                     <TableCell>
                       {rule.campaign ? (
-                        <span className="text-sm">{rule.campaign.campaignName}</span>
+                        <span className="text-sm">
+                          {rule.campaign.campaignName}
+                        </span>
                       ) : (
                         <Badge variant="outline">All Campaigns</Badge>
                       )}

@@ -306,6 +306,7 @@ model PpcBidHistory {
   oldBid      Float
   newBid      Float
   reason      String       // AI explanation of why bid was changed
+  changedBy   String       @default("System") // System, User
   ruleApplied String?      // Which automation rule triggered this
   acos        Float?
   createdAt   DateTime     @default(now())
@@ -420,4 +421,19 @@ model PpcAuditReport {
   @@index([campaignId])
   @@index([createdAt])
   @@map("ppc_audit_reports")
+}
+
+model PpcSettings {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  defaultBidStrategy    String
+  automationThresholds  Json     // Automation thresholds object
+  cogsPercentages       Json     // COGS percentages by category
+  notifications         Json     // Notification preferences
+  marketplace           Json     // Marketplace settings
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  @@index([userId])
+  @@map("ppc_settings")
 }

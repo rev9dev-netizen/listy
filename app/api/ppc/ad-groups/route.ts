@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
@@ -45,7 +46,6 @@ export async function POST(request: NextRequest) {
                 name,
                 defaultBid: parseFloat(defaultBid),
                 status,
-                adGroupId: `ag-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Mock Amazon ad group ID
             },
         });
 

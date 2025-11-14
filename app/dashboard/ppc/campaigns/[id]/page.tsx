@@ -25,6 +25,8 @@ import {
 import { toast } from "sonner";
 import CreateAdGroupDialog from "../../components/create-ad-group-dialog";
 import AuditResultsModal from "../../components/audit-results-modal";
+import CampaignCharts from "../../components/campaign-charts";
+import DaypartingSchedule from "../../components/dayparting-schedule";
 
 export default function CampaignDetailPage() {
   const params = useParams();
@@ -178,6 +180,19 @@ export default function CampaignDetailPage() {
         campaignName={campaign.campaignName}
       />
 
+      {/* Charts */}
+      {campaign.metrics && campaign.metrics.length > 0 && (
+        <CampaignCharts
+          metrics={campaign.metrics}
+          keywords={
+            campaign.adGroups?.flatMap(
+              (ag: { keywords: unknown[] }) => ag.keywords || []
+            ) || []
+          }
+          dailyBudget={campaign.dailyBudget}
+        />
+      )}
+
       {/* Metrics */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -302,6 +317,9 @@ export default function CampaignDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dayparting Schedule */}
+      <DaypartingSchedule campaignId={campaignId} />
     </div>
   );
 }

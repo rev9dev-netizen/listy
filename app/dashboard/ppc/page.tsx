@@ -9,6 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CreateCampaignDialog } from "./components/create-campaign-dialog";
 import CampaignStrategyWizard from "./components/campaign-strategy-wizard";
+import BudgetOptimizer from "./components/budget-optimizer";
+import NegativeKeywordsManager from "./components/negative-keywords-manager";
+import MatchTypeFunnel from "./components/match-type-funnel";
+import NotificationCenter from "./components/notification-center";
 import {
   Table,
   TableBody,
@@ -28,8 +32,10 @@ import {
   Wand2,
   Bot,
   User,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -40,8 +46,12 @@ interface ChatMessage {
 export default function PPCDashboardPage() {
   const [chatQuestion, setChatQuestion] = useState("");
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [showBudgetOptimizer, setShowBudgetOptimizer] = useState(false);
+  const [showNegativeKeywords, setShowNegativeKeywords] = useState(false);
+  const [showMatchTypeFunnel, setShowMatchTypeFunnel] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -49,11 +59,7 @@ export default function PPCDashboardPage() {
   }, [chatMessages]);
 
   // Fetch campaigns
-  const {
-    data: campaignsData,
-    isLoading,
-    refetch,
-  } = useQuery({
+  const { data: campaignsData, isLoading } = useQuery({
     queryKey: ["ppc-campaigns"],
     queryFn: async () => {
       const response = await fetch("/api/ppc/campaigns");
@@ -164,6 +170,15 @@ export default function PPCDashboardPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <NotificationCenter />
+          <Button
+            variant="outline"
+            onClick={() => setShowBudgetOptimizer(true)}
+            disabled={campaigns.length === 0}
+          >
+            <Target className="w-4 h-4 mr-2" />
+            Optimize Budget
+          </Button>
           <CampaignStrategyWizard
             onComplete={() => {
               queryClient.invalidateQueries({ queryKey: ["ppc-campaigns"] });
@@ -263,7 +278,7 @@ export default function PPCDashboardPage() {
                     }`}
                   >
                     {message.role === "assistant" && (
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                      <div className="shrink-0 w-8 h-8 rounded-full bg-linear-to-br from-purple-500 to-pink-500 flex items-center justify-center">
                         <Bot className="w-4 h-4 text-white" />
                       </div>
                     )}
@@ -282,7 +297,7 @@ export default function PPCDashboardPage() {
                       </p>
                     </div>
                     {message.role === "user" && (
-                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                      <div className="shrink-0 w-8 h-8 rounded-full bg-linear-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
                         <User className="w-4 h-4 text-white" />
                       </div>
                     )}
@@ -344,10 +359,37 @@ export default function PPCDashboardPage() {
       {/* Alerts */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center">
-            <AlertCircle className="w-5 h-5 mr-2 text-yellow-600" />
-            ⚠️ Alerts & Recommendations
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center">
+              <AlertCircle className="w-5 h-5 mr-2 text-yellow-600" />
+              ⚠️ Alerts & Recommendations
+            </CardTitle>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowNegativeKeywords(true)}
+              >
+                Negative Keywords
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/dashboard/ppc/alerts")}
+              >
+                <AlertCircle className="w-4 h-4 mr-2" />
+                View All Alerts
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push("/dashboard/ppc/automation")}
+              >
+                <Zap className="w-4 h-4 mr-2" />
+                Automation Rules
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -505,6 +547,40 @@ export default function PPCDashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Match Type Funnel Analysis */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center">
+              <Target className="w-5 h-5 mr-2 text-blue-500" />
+              Match Type Performance
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowMatchTypeFunnel(!showMatchTypeFunnel)}
+            >
+              {showMatchTypeFunnel ? "Hide" : "Show"} Funnel Analysis
+            </Button>
+          </div>
+        </CardHeader>
+        {showMatchTypeFunnel && (
+          <CardContent>
+            <MatchTypeFunnel />
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Dialogs */}
+      <BudgetOptimizer
+        open={showBudgetOptimizer}
+        onOpenChange={setShowBudgetOptimizer}
+      />
+      <NegativeKeywordsManager
+        open={showNegativeKeywords}
+        onOpenChange={setShowNegativeKeywords}
+      />
     </div>
   );
 }

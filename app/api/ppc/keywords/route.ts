@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { calculateKeywordProfit } from "@/lib/services/ppc-keyword-quality";
 
 export async function GET(request: NextRequest) {
     try {
@@ -18,7 +19,46 @@ export async function GET(request: NextRequest) {
         if (adGroupId) { where.adGroupId = adGroupId; }
 
         const keywords = await prisma.ppcKeyword.findMany({ where, include: { adGroup: { include: { campaign: { select: { id: true, campaignName: true } } } }, metrics: { where: { date: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } }, orderBy: { date: "desc" } }, bidHistory: { orderBy: { createdAt: "desc" }, take: 5 } }, orderBy: { createdAt: "desc" } });
-        return NextResponse.json({ keywords });
+
+        // Calculate aggregated metrics and profit for each keyword
+        const keywordsWithMetrics = keywords.map((keyword) => {
+            // Aggregate metrics from last 30 days
+            const aggregated = keyword.metrics.reduce(
+                (acc, m) => ({
+                    impressions: acc.impressions + m.impressions,
+                    clicks: acc.clicks + m.clicks,
+                    conversions: acc.conversions + (m.orders || 0),
+                    spend: acc.spend + m.spend,
+                    sales: acc.sales + m.sales,
+                }),
+                { impressions: 0, clicks: 0, conversions: 0, spend: 0, sales: 0 }
+            );
+
+            // Calculate derived metrics
+            const ctr = aggregated.impressions > 0 ? (aggregated.clicks / aggregated.impressions) * 100 : 0;
+            const conversionRate = aggregated.clicks > 0 ? (aggregated.conversions / aggregated.clicks) * 100 : 0;
+            const acos = aggregated.sales > 0 ? (aggregated.spend / aggregated.sales) * 100 : 0;
+            const cpc = aggregated.clicks > 0 ? aggregated.spend / aggregated.clicks : 0;
+
+            // Calculate profit (30% COGS, 15% fees by default)
+            const profit = calculateKeywordProfit(aggregated.sales, aggregated.spend, 0.30, 0.15);
+
+            return {
+                ...keyword,
+                impressions: aggregated.impressions,
+                clicks: aggregated.clicks,
+                conversions: aggregated.conversions,
+                spend: aggregated.spend,
+                sales: aggregated.sales,
+                ctr,
+                conversionRate,
+                acos,
+                cpc,
+                netProfit: profit.netProfit,
+            };
+        });
+
+        return NextResponse.json({ keywords: keywordsWithMetrics });
     } catch (error) {
         console.error("Failed to fetch keywords:", error);
         return NextResponse.json({ error: "Failed to fetch keywords" }, { status: 500 });
