@@ -1,7 +1,7 @@
 "use client";
 import { useListingBuilder } from "../useListingBuilder";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { toast } from "sonner";
 import { ListingHeader } from "../components/ListingHeader";
 import { KeywordBank } from "../components/KeywordBank";
@@ -14,7 +14,7 @@ import { DescriptionEditor } from "../components/DescriptionEditor";
 import { AddKeywordsDialog } from "../components/AddKeywordsDialog";
 import { AISuggestionDialog } from "../components/AISuggestionDialog";
 
-export default function ListingBuilderPage() {
+function ListingBuilderContent() {
   const builder = useListingBuilder();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -262,5 +262,13 @@ export default function ListingBuilderPage() {
         onRegenerate={builder.regenerateSuggestion}
       />
     </div>
+  );
+}
+
+export default function ListingBuilderPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center">Loading...</div>}>
+      <ListingBuilderContent />
+    </Suspense>
   );
 }
