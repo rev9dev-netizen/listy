@@ -1,9 +1,18 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { ImageOff, MoreVertical } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +30,8 @@ interface ListingSummary {
   version: number;
   finalized: boolean;
   updatedAt: string;
+  asin?: string;
+  imageUrl?: string;
 }
 
 export default function ListingsDashboardPage() {
@@ -39,22 +50,16 @@ export default function ListingsDashboardPage() {
       if (!res.ok) throw new Error("Failed to load listings");
 
       const { listings } = await res.json();
-      const summaries: ListingSummary[] = listings.map(
-        (listing: {
-          id: string;
-          title: string;
-          version: number;
-          finalized: boolean;
-          updatedAt: string;
-        }) => ({
-          id: listing.id,
-          title: listing.title || "(Untitled Listing)",
-          version: listing.version,
-          finalized: listing.finalized,
-          updatedAt: new Date(listing.updatedAt).toLocaleString(),
-        })
-      );
-
+      // For demo, add asin and imageUrl if available (mocked)
+      const summaries: ListingSummary[] = listings.map((listing: any) => ({
+        id: listing.id,
+        title: listing.title || "(Untitled Listing)",
+        version: listing.version,
+        finalized: listing.finalized,
+        updatedAt: new Date(listing.updatedAt).toLocaleString(),
+        asin: listing.asin || undefined, // add asin if available
+        imageUrl: listing.imageUrl || undefined, // add imageUrl if available
+      }));
       setData(summaries);
     } catch (e) {
       console.error("Failed to load listings dashboard", e);
@@ -92,24 +97,77 @@ export default function ListingsDashboardPage() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table
+            className="w-full text-sm border-separate border-spacing-0"
+            style={{ tableLayout: "auto" }}
+          >
             <thead>
-              <tr className="border-b text-xs text-muted-foreground">
-                <th className="py-2 text-left font-medium">Title</th>
-                <th className="py-2 text-left font-medium">Status</th>
-                <th className="py-2 text-left font-medium">Version</th>
-                <th className="py-2 text-left font-medium">Last Updated</th>
-                <th className="py-2 text-right font-medium">Actions</th>
+              <tr className="bg-muted border-b border-border text-xs text-foreground uppercase">
+                <th
+                  className="py-2 px-2 text-left font-bold whitespace-nowrap"
+                  style={{ width: 32, minWidth: 32, maxWidth: 32 }}
+                >
+                  <Checkbox aria-label="Select all" className="w-4 h-4" />
+                </th>
+                <th
+                  className="py-2 px-2 text-left font-bold whitespace-nowrap"
+                  style={{ width: 56, minWidth: 56, maxWidth: 56 }}
+                >
+                  Image
+                </th>
+                <th
+                  className="py-2 px-2 text-left font-bold whitespace-nowrap"
+                  style={{ width: 48, minWidth: 48, maxWidth: 48 }}
+                >
+                  Actions
+                </th>
+                <th
+                  className="py-2 px-2 text-left font-bold whitespace-normal"
+                  style={{
+                    width: 260,
+                    minWidth: 180,
+                    maxWidth: 320,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  Product Title
+                </th>
+                <th
+                  className="py-2 px-2 text-left font-bold whitespace-nowrap"
+                  style={{ width: 48, minWidth: 48, maxWidth: 64 }}
+                >
+                  Version
+                </th>
+                <th
+                  className="py-2 px-2 text-left font-bold whitespace-nowrap"
+                  style={{ width: 80, minWidth: 80, maxWidth: 100 }}
+                >
+                  Status
+                </th>
+                <th
+                  className="py-2 px-2 text-left font-bold whitespace-nowrap"
+                  style={{ width: 140, minWidth: 120, maxWidth: 160 }}
+                >
+                  Last Updated
+                </th>
+                <th
+                  className="py-2 px-2 text-right font-bold whitespace-nowrap"
+                  style={{ width: 56, minWidth: 48, maxWidth: 64 }}
+                >
+                  Edit
+                </th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={5} className="py-6">
+                  <td colSpan={7} className="py-6">
                     <div className="flex gap-2">
+                      <Skeleton className="h-4 w-6" />
+                      <Skeleton className="h-8 w-8 rounded-md" />
                       <Skeleton className="h-4 w-48" />
-                      <Skeleton className="h-4 w-20" />
                       <Skeleton className="h-4 w-12" />
+                      <Skeleton className="h-4 w-20" />
                       <Skeleton className="h-4 w-32" />
                     </div>
                   </td>
@@ -118,7 +176,7 @@ export default function ListingsDashboardPage() {
               {data && data.length === 0 && !loading && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="py-6 text-center text-muted-foreground"
                   >
                     No listings yet. Click &quot;Add a Listing&quot; to get
@@ -127,16 +185,103 @@ export default function ListingsDashboardPage() {
                 </tr>
               )}
               {data &&
-                data.map((l) => (
-                  <tr key={l.id} className="border-b hover:bg-muted/50">
-                    <td className="py-2 max-w-xs truncate">
-                      {l.title || (
-                        <span className="text-muted-foreground">
-                          (Untitled)
-                        </span>
+                data.map((l, idx) => (
+                  <tr
+                    key={l.id}
+                    className={`border-b border-border transition-colors ${
+                      idx % 2 === 0 ? "bg-background" : "bg-muted/30"
+                    } hover:bg-primary/5`}
+                  >
+                    {/* Checkbox */}
+                    <td className="py-2 px-2 align-middle whitespace-nowrap">
+                      <Checkbox
+                        aria-label={`Select listing ${l.title}`}
+                        className="w-4 h-4"
+                      />
+                    </td>
+                    {/* Image */}
+                    <td className="py-2 px-2 align-middle whitespace-nowrap">
+                      {l.imageUrl ? (
+                        <img
+                          src={l.imageUrl}
+                          alt={l.title}
+                          className="w-12 h-12 object-cover rounded-md border bg-white"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 flex items-center justify-center rounded-md border bg-muted text-muted-foreground">
+                          <ImageOff className="w-6 h-6" />
+                        </div>
                       )}
                     </td>
-                    <td className="py-2">
+                    {/* 3-dot Dropdown */}
+                    <td className="py-2 px-2 align-middle whitespace-nowrap">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                          >
+                            <MoreVertical className="w-5 h-5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem>Duplicate</DropdownMenuItem>
+                          <DropdownMenuItem>Link Listing</DropdownMenuItem>
+                          <DropdownMenuItem>Export as CSV</DropdownMenuItem>
+                          <DropdownMenuItem>View versions</DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600">
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                    {/* Title + ASIN */}
+                    <td
+                      className="py-2 px-2 align-middle"
+                      style={{ maxWidth: 320, minWidth: 180, width: 260 }}
+                    >
+                      <div
+                        className="font-medium whitespace-normal break-words leading-tight"
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          maxWidth: 320,
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "-webkit-box",
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: "vertical",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            wordBreak: "break-word",
+                            maxWidth: 320,
+                          }}
+                        >
+                          {l.title || (
+                            <span className="text-muted-foreground">
+                              (Untitled)
+                            </span>
+                          )}
+                        </span>
+                        {l.asin && (
+                          <span
+                            className="text-xs text-muted-foreground truncate"
+                            style={{ maxWidth: 320 }}
+                          >
+                            {l.asin}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    {/* Version */}
+                    <td className="py-2 px-2 align-middle whitespace-nowrap">
+                      v{l.version}
+                    </td>
+                    {/* Status */}
+                    <td className="py-2 px-2 align-middle whitespace-nowrap">
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                           l.finalized
@@ -147,9 +292,12 @@ export default function ListingsDashboardPage() {
                         {l.finalized ? "Finalized" : "Draft"}
                       </span>
                     </td>
-                    <td className="py-2">v{l.version}</td>
-                    <td className="py-2">{l.updatedAt}</td>
-                    <td className="py-2 text-right">
+                    {/* Last Updated */}
+                    <td className="py-2 px-2 align-middle whitespace-nowrap">
+                      {l.updatedAt}
+                    </td>
+                    {/* Edit Button */}
+                    <td className="py-2 px-2 align-middle text-right whitespace-nowrap">
                       <Button
                         size="sm"
                         variant="outline"

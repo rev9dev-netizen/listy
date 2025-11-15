@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { SparklesIcon } from "lucide-react";
 import { getCharCountColor } from "../_utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Props {
   bullets: string[];
@@ -13,6 +14,9 @@ interface Props {
   canGenerate: boolean;
   generate: () => void;
   generating: boolean;
+  pendingSuggestion?: string | null;
+  applySuggestion?: () => void;
+  discardSuggestion?: () => void;
 }
 
 export function BulletsEditor({
@@ -22,6 +26,9 @@ export function BulletsEditor({
   canGenerate,
   generate,
   generating,
+  pendingSuggestion,
+  applySuggestion,
+  discardSuggestion,
 }: Props) {
   return (
     <Card>
@@ -57,8 +64,24 @@ export function BulletsEditor({
               onChange={(e) => onChange(index, e.target.value)}
               placeholder="Start typing content here"
             />
+            {/* Show skeleton under each bullet when generating */}
+            {generating && <Skeleton className="h-10 w-full mt-2" />}
           </div>
         ))}
+        {/* Suggestion box, only if pendingSuggestion exists */}
+        {pendingSuggestion && (
+          <div className="bg-muted p-2 rounded mt-2">
+            <div>{pendingSuggestion}</div>
+            <div className="flex gap-2 mt-2 justify-end">
+              <Button size="sm" onClick={applySuggestion}>
+                Use suggestion
+              </Button>
+              <Button size="sm" variant="outline" onClick={discardSuggestion}>
+                Discard
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -265,10 +265,17 @@ function parseListingResponse(response: string, section: 'title' | 'bullets' | '
         }
 
         // Handle section-specific responses
+
+        // Helper to strip HTML tags
+        function stripHtmlTags(str: string): string {
+            if (!str) return '';
+            return str.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+        }
+
         if (section === 'title') {
             // Plain text response for title
             return {
-                title: cleaned,
+                title: stripHtmlTags(cleaned),
                 bullets: [],
                 description: '',
                 backendTerms: '',
@@ -283,7 +290,7 @@ function parseListingResponse(response: string, section: 'title' | 'bullets' | '
             }
             return {
                 title: '',
-                bullets: bulletsArray,
+                bullets: bulletsArray.map(stripHtmlTags),
                 description: '',
                 backendTerms: '',
             };
@@ -294,7 +301,7 @@ function parseListingResponse(response: string, section: 'title' | 'bullets' | '
             return {
                 title: '',
                 bullets: [],
-                description: cleaned,
+                description: stripHtmlTags(cleaned),
                 backendTerms: '',
             };
         }

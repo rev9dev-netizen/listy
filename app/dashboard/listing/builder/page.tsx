@@ -12,7 +12,6 @@ import { TitleEditor } from "../components/TitleEditor";
 import { BulletsEditor } from "../components/BulletsEditor";
 import { DescriptionEditor } from "../components/DescriptionEditor";
 import { AddKeywordsDialog } from "../components/AddKeywordsDialog";
-import { AISuggestionDialog } from "../components/AISuggestionDialog";
 
 function ListingBuilderContent() {
   const builder = useListingBuilder();
@@ -46,6 +45,11 @@ function ListingBuilderContent() {
           bullet5: bullets[4] || "",
           description: draft.description || "",
         });
+
+        // Load AI parameters into builder
+        if (draft.params) {
+          builder.setParams(draft.params);
+        }
 
         // Load keywords into builder
         if (Array.isArray(draft.keywords) && draft.keywords.length > 0) {
@@ -202,7 +206,17 @@ function ListingBuilderContent() {
               generate={() =>
                 builder.generateContentMutation.mutate({ section: "title" })
               }
-              generating={builder.generateContentMutation.isPending}
+              generating={
+                builder.generateContentMutation.isPending &&
+                builder.pendingSuggestion?.section === "title"
+              }
+              pendingSuggestion={
+                builder.pendingSuggestion?.section === "title"
+                  ? builder.pendingSuggestion.content
+                  : null
+              }
+              applySuggestion={builder.applySuggestion}
+              discardSuggestion={builder.discardSuggestion}
             />
             <BulletsEditor
               bullets={[
@@ -227,7 +241,17 @@ function ListingBuilderContent() {
               generate={() =>
                 builder.generateContentMutation.mutate({ section: "bullets" })
               }
-              generating={builder.generateContentMutation.isPending}
+              generating={
+                builder.generateContentMutation.isPending &&
+                builder.pendingSuggestion?.section === "bullet"
+              }
+              pendingSuggestion={
+                builder.pendingSuggestion?.section === "bullet"
+                  ? builder.pendingSuggestion.content
+                  : null
+              }
+              applySuggestion={builder.applySuggestion}
+              discardSuggestion={builder.discardSuggestion}
             />
             <DescriptionEditor
               value={builder.content.description}
@@ -241,7 +265,17 @@ function ListingBuilderContent() {
                   section: "description",
                 })
               }
-              generating={builder.generateContentMutation.isPending}
+              generating={
+                builder.generateContentMutation.isPending &&
+                builder.pendingSuggestion?.section === "description"
+              }
+              pendingSuggestion={
+                builder.pendingSuggestion?.section === "description"
+                  ? builder.pendingSuggestion.content
+                  : null
+              }
+              applySuggestion={builder.applySuggestion}
+              discardSuggestion={builder.discardSuggestion}
             />
           </div>
         </div>
@@ -253,14 +287,7 @@ function ListingBuilderContent() {
         setBulkText={builder.setBulkKeywordText}
         onAdd={(phrases) => phrases.forEach((p) => builder.addManualKeyword(p))}
       />
-      <AISuggestionDialog
-        open={builder.suggestionDialog}
-        setOpen={builder.setSuggestionDialog}
-        loading={builder.generateContentMutation.isPending}
-        suggestion={builder.currentSuggestion?.content || null}
-        onApply={builder.applySuggestion}
-        onRegenerate={builder.regenerateSuggestion}
-      />
+      {/* Inline AI suggestion UI will be handled in editors */}
     </div>
   );
 }

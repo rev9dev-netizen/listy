@@ -93,6 +93,8 @@ model Draft {
   finalized    Boolean  @default(true) // true = immutable snapshot, false = active editing draft
   contentHash  String?  // sha256 of normalized content+keywords for dedupe
   version      Int      @default(1)
+  score        Int      @default(0)
+  marketplace  String   @default("US")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

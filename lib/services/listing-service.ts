@@ -309,6 +309,50 @@ export function autoFixListing(draft: ListingDraft, request: ListingDraftRequest
 }
 
 // Calculate keyword usage statistics
+// Advanced listing scoring algorithm
+export function advancedListingScore(
+    draft: ListingDraft,
+    request: ListingDraftRequest,
+    issues: ValidationIssue[]
+): number {
+    // Keyword coverage
+    const keywordUsage = calculateKeywordUsage(draft, [
+        ...request.keywords.primary,
+        ...request.keywords.secondary,
+    ]);
+    const primaryCoverage = request.keywords.primary.filter(
+        (kw) => keywordUsage[kw] > 0
+    ).length;
+    const secondaryCoverage = request.keywords.secondary.filter(
+        (kw) => keywordUsage[kw] > 0
+    ).length;
+
+    // Penalties
+    const stuffingPenalty = issues.filter(
+        (i) => i.type === "stuffing"
+    ).length;
+    const lengthPenalty = issues.filter(
+        (i) => i.type === "length"
+    ).length;
+    const policyPenalty = issues.filter(
+        (i) => i.type === "policy"
+    ).length;
+
+    // Score calculation (0-100)
+    let score =
+        primaryCoverage * 20 +
+        secondaryCoverage * 10 -
+        stuffingPenalty * 10 -
+        lengthPenalty * 5 -
+        policyPenalty * 15;
+
+    // Bonus for no errors/warnings
+    if (issues.length === 0) score += 20;
+
+    // Clamp score
+    score = Math.max(0, Math.min(100, score));
+    return score;
+}
 export function calculateKeywordUsage(
     draft: ListingDraft,
     keywords: string[]

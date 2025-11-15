@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import type { UIKeyword, SortBy, AISuggestion, ListingParameters, ListingContent, ListingMetrics } from './_types'
+import type { UIKeyword, SortBy, ListingParameters, ListingContent, ListingMetrics } from './_types'
 import { parseCerebroCSV, keywordIsUsed } from './_utils'
 import { enrichKeywords } from '@/lib/keyword-metrics'
 
@@ -44,9 +44,9 @@ export function useListingBuilder() {
         title: '', bullet1: '', bullet2: '', bullet3: '', bullet4: '', bullet5: '', description: ''
     })
 
-    // Suggestion dialog
-    const [suggestionDialog, setSuggestionDialog] = useState(false)
-    const [currentSuggestion, setCurrentSuggestion] = useState<AISuggestion | null>(null)
+    // // Suggestion dialog
+    // const [suggestionDialog, setSuggestionDialog] = useState(false)
+    // const [currentSuggestion, setCurrentSuggestion] = useState<AISuggestion | null>(null)
 
     // Metrics
     const [metrics, setMetrics] = useState<ListingMetrics>({ generatedVolume: 0 })
@@ -54,7 +54,8 @@ export function useListingBuilder() {
     // Limits
     const limits = { titleLimit: 200, bulletLimit: 200, descLimit: 2000 }
 
-    const canGenerate = keywords.filter(k => k.selected).length > 0 && params.productCharacteristics.trim().length > 0
+    // Enable AI generation if any keywords exist and product characteristics are filled
+    const canGenerate = keywords.length > 0 && params.productCharacteristics.trim().length > 0
 
     // CSV upload
     function handleFileUpload(file: File) {
@@ -143,11 +144,14 @@ export function useListingBuilder() {
         toast.success('Keywords exported successfully!')
     }
 
+    // Track pending suggestion for each section
+    const [pendingSuggestion, setPendingSuggestion] = useState<{ content: string, section: string } | null>(null);
+
     const generateContentMutation = useMutation({
         mutationFn: async (data: { section: 'title' | 'bullets' | 'description' }) => {
-            const selectedKeywords = keywords.filter(k => k.selected)
-            if (selectedKeywords.length === 0) throw new Error('Please select keywords first')
-            if (!params.productCharacteristics.trim()) throw new Error('Please fill in product characteristics')
+            // Use all keywords for generation
+            if (keywords.length === 0) throw new Error('Please add keywords first');
+            if (!params.productCharacteristics.trim()) throw new Error('Please fill in product characteristics');
 
             const response = await fetch('/api/listing/draft', {
                 method: 'POST',
@@ -156,7 +160,7 @@ export function useListingBuilder() {
                     productName: params.productName || 'Product',
                     brand: params.brandName,
                     category: params.productCharacteristics,
-                    keywords: selectedKeywords,
+                    keywords: keywords,
                     features: params.characteristicTags,
                     targetAudience: params.targetAudience,
                     marketplace: 'US',
@@ -173,43 +177,47 @@ export function useListingBuilder() {
             return { ...(await response.json()), section: data.section }
         },
         onSuccess: (data) => {
-            // The API returns full listing, but we only show the requested section
+            // Store suggestion until user applies/discards
             if (data.section === 'title') {
-                setCurrentSuggestion({ content: data.title, section: 'title' })
+                setPendingSuggestion({ content: data.title, section: 'title' });
             } else if (data.section === 'bullets') {
-                setCurrentSuggestion({ content: data.bullets.join('\n\n'), section: 'bullet' })
+                setPendingSuggestion({ content: data.bullets.join('\n\n'), section: 'bullet' });
             } else if (data.section === 'description') {
-                setCurrentSuggestion({ content: data.description, section: 'description' })
+                setPendingSuggestion({ content: data.description, section: 'description' });
             }
-            setSuggestionDialog(true)
-            toast.success('Content generated successfully!')
+            toast.success('Content generated successfully!');
         },
         onError: (e: Error) => toast.error(e.message)
-    })
+    });
 
+    // Apply suggestion and clear pending
     function applySuggestion() {
-        if (!currentSuggestion) return
-        if (currentSuggestion.section === 'title') {
-            setContent(c => ({ ...c, title: currentSuggestion.content }))
-        } else if (currentSuggestion.section === 'bullet') {
-            const bullets = currentSuggestion.content.split('\n\n')
-            setContent(c => ({ ...c, bullet1: bullets[0] || '', bullet2: bullets[1] || '', bullet3: bullets[2] || '', bullet4: bullets[3] || '', bullet5: bullets[4] || '' }))
-        } else if (currentSuggestion.section === 'description') {
-            setContent(c => ({ ...c, description: currentSuggestion.content }))
+        if (!pendingSuggestion) return;
+        if (pendingSuggestion.section === 'title') {
+            setContent(c => ({ ...c, title: pendingSuggestion.content }));
+        } else if (pendingSuggestion.section === 'bullet') {
+            const bullets = pendingSuggestion.content.split('\n\n');
+            setContent(c => ({ ...c, bullet1: bullets[0] || '', bullet2: bullets[1] || '', bullet3: bullets[2] || '', bullet4: bullets[3] || '', bullet5: bullets[4] || '' }));
+        } else if (pendingSuggestion.section === 'description') {
+            setContent(c => ({ ...c, description: pendingSuggestion.content }));
         }
-        setSuggestionDialog(false)
-        setCurrentSuggestion(null)
-        updateScore()
-        toast.success('Suggestion applied!')
+        setPendingSuggestion(null);
+        updateScore();
+        toast.success('Suggestion applied!');
     }
 
-    function regenerateSuggestion() {
-        if (!currentSuggestion) return
-        setSuggestionDialog(false)
-        setTimeout(() => {
-            generateContentMutation.mutate({ section: currentSuggestion.section === 'bullet' ? 'bullets' : currentSuggestion.section })
-        }, 100)
+    // Discard suggestion
+    function discardSuggestion() {
+        setPendingSuggestion(null);
     }
+
+    // function regenerateSuggestion() {
+    //     if (!currentSuggestion) return
+    //     setSuggestionDialog(false)
+    //     setTimeout(() => {
+    //         generateContentMutation.mutate({ section: currentSuggestion.section === 'bullet' ? 'bullets' : currentSuggestion.section })
+    //     }, 100)
+    // }
 
     // Autosave: debounce content changes when a draft id exists in URL
     const autosaveRef = useRef<NodeJS.Timeout | null>(null)
@@ -229,7 +237,8 @@ export function useListingBuilder() {
                     title: content.title,
                     bullets: [content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5],
                     description: content.description,
-                    keywords: keywords
+                    keywords: keywords,
+                    params: params // Save AI parameters
                 }
                 console.log('Autosave payload:', payload)
                 const res = await fetch(`/api/listing/draft?id=${draftId}`, {
@@ -252,21 +261,40 @@ export function useListingBuilder() {
         return () => {
             if (autosaveRef.current) clearTimeout(autosaveRef.current)
         }
-    }, [content.title, content.description, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5, keywords])
+    }, [content.title, content.description, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5, keywords, params])
+
+    // Auto-select keywords present in content
+    useEffect(() => {
+        if (keywords.length === 0) return;
+        const text = [content.title, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5, content.description].join(' ').toLowerCase();
+        const updated = keywords.map(k => ({
+            ...k,
+            selected: text.includes(k.phrase.toLowerCase())
+        }));
+        // If no keywords are selected, select the first one
+        if (!updated.some(k => k.selected) && updated.length > 0) {
+            updated[0].selected = true;
+        }
+        // Only update if changed
+        const isDifferent = updated.some((k, i) => k.selected !== keywords[i].selected);
+        if (isDifferent) {
+            setKeywords(updated);
+        }
+    }, [content.title, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5, content.description, keywords, keywords.length]);
 
     return {
         // state
         keywords, manualKeyword, bulkKeywordText, sortBy, currentPage, keywordsPerPage,
         keywordBankOpen, rootKeywordsOpen, parametersOpen, manualKeywordDialog, addKeywordsDialog, emptyStateAddOpen,
-        rootWordFilter, isUploading, isAiFiltering, params, content, suggestionDialog, currentSuggestion,
-        metrics, limits, canGenerate, saving, lastSavedAt,
+        rootWordFilter, isUploading, isAiFiltering, params, content, metrics, limits, canGenerate, saving, lastSavedAt,
+        pendingSuggestion,
         // setters
         setManualKeyword, setBulkKeywordText, setSortBy, setCurrentPage, setKeywordBankOpen,
         setRootKeywordsOpen, setParametersOpen, setManualKeywordDialog, setAddKeywordsDialog, setEmptyStateAddOpen,
-        setRootWordFilter, setIsAiFiltering, setParams, setContent, setSuggestionDialog, setCurrentSuggestion, setKeywords,
+        setRootWordFilter, setIsAiFiltering, setParams, setContent, setKeywords,
         // actions
         handleFileUpload, addManualKeyword, toggleKeyword, updateScore, exportKeywords,
-        applySuggestion, regenerateSuggestion,
+        applySuggestion, discardSuggestion,
         // mutation
         generateContentMutation
     }
