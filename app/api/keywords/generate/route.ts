@@ -66,7 +66,14 @@ export async function GET() {
         })
 
         return NextResponse.json({
-            keywords: keywords.map((k) => ({
+            keywords: keywords.map((k: {
+                term: string
+                score: number
+                clusterId: string | null
+                class: string
+                source: string
+                included: boolean
+            }) => ({
                 term: k.term,
                 score: k.score,
                 cluster_id: k.clusterId || '',
