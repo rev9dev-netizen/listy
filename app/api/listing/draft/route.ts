@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/databse/prisma'
 import { generateAmazonListing } from '@/lib/services/ai-listing-service'
 import { getOrCreateUser } from '@/lib/auth-helpers'
+import { LISTING_TEMPLATES, getTemplate } from '@/lib/listing-templates'
 
 interface GenerateListingRequest {
     productName: string;
@@ -42,8 +43,26 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Load template if specified
+        let template: any = getTemplate('professional-seo'); // Default
+        if (body.templateId) {
+            // Check if it's a system template
+            const systemTemplate = LISTING_TEMPLATES.find(t => t.id === body.templateId);
+            if (systemTemplate) {
+                template = systemTemplate;
+            } else {
+                // Try to load custom template from database
+                const customTemplate = await prisma.listingTemplate.findFirst({
+                    where: { id: body.templateId, userId: user.id },
+                });
+                if (customTemplate) {
+                    template = customTemplate;
+                }
+            }
+        }
+
         // Generate listing with AI
-        const generated = await generateAmazonListing(body)
+        const generated = await generateAmazonListing(body, template)
 
         // If generating a specific section only, return just the content (don't save)
         if (body.section && body.section !== 'all') {
@@ -75,6 +94,11 @@ export async function POST(request: NextRequest) {
                 keywords: body.keywords as any,
                 finalized: false,
                 version: newVersion,
+                // Persist inputs
+                productName: body.productName,
+                brand: body.brand,
+                targetAudience: body.targetAudience,
+                features: body.features || [],
             },
         })
 
@@ -88,6 +112,11 @@ export async function POST(request: NextRequest) {
             version: created.version,
             warnings: generated.warnings,
             keywordUsage: generated.keywordUsage,
+            // Return inputs
+            productName: created.productName,
+            brand: created.brand,
+            targetAudience: created.targetAudience,
+            features: created.features,
         })
     } catch (error) {
         console.error('Error generating listing:', error)
@@ -124,6 +153,13 @@ export async function GET(request: NextRequest) {
                 keywords: draft.keywords || [],
                 version: draft.version,
                 finalized: draft.finalized,
+                // Return new fields
+                productName: draft.productName,
+                brand: draft.brand,
+                targetAudience: draft.targetAudience,
+                tone: draft.tone,
+                features: draft.features,
+                avoidWords: draft.avoidWords,
                 createdAt: draft.createdAt,
                 updatedAt: draft.updatedAt,
             })
@@ -162,6 +198,13 @@ export async function PATCH(request: NextRequest) {
                 selected: boolean
             }>
             finalized?: boolean
+            // New fields
+            productName?: string
+            brand?: string
+            targetAudience?: string
+            tone?: string
+            features?: string[]
+            avoidWords?: string[]
         }
 
         // Verify ownership
@@ -183,6 +226,13 @@ export async function PATCH(request: NextRequest) {
                 backendTerms: body.backendTerms !== undefined ? body.backendTerms : existing.backendTerms,
                 keywords: (body.keywords ?? existing.keywords) as unknown as object,
                 finalized: body.finalized ?? existing.finalized,
+                // Update new fields
+                productName: body.productName ?? existing.productName,
+                brand: body.brand ?? existing.brand,
+                targetAudience: body.targetAudience ?? existing.targetAudience,
+                tone: body.tone ?? existing.tone,
+                features: body.features ?? existing.features,
+                avoidWords: body.avoidWords ?? existing.avoidWords,
             },
         })
 
@@ -190,6 +240,9 @@ export async function PATCH(request: NextRequest) {
             id: updated.id,
             version: updated.version,
             finalized: updated.finalized,
+            // Return updated fields to confirm save
+            productName: updated.productName,
+            brand: updated.brand,
         })
     } catch (error) {
         console.error('Error updating draft:', error)

@@ -1,7 +1,7 @@
 "use client";
 import { useListingBuilder } from "../useListingBuilder";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useRef, Suspense } from "react";
+import { useEffect, useState, useRef, Suspense, useMemo } from "react";
 import { toast } from "sonner";
 import { ListingHeader } from "../components/ListingHeader";
 import { KeywordBank } from "../components/KeywordBank";
@@ -11,6 +11,8 @@ import { AIParameters } from "../components/AIParameters";
 import { TitleEditor } from "../components/TitleEditor";
 import { BulletsEditor } from "../components/BulletsEditor";
 import { DescriptionEditor } from "../components/DescriptionEditor";
+import { SearchTermsEditor } from "../components/SearchTermsEditor";
+import { AIDisclaimerDialog } from "../components/AIDisclaimerDialog";
 import { AddKeywordsDialog } from "../components/AddKeywordsDialog";
 
 function ListingBuilderContent() {
@@ -47,8 +49,22 @@ function ListingBuilderContent() {
         });
 
         // Load AI parameters into builder
+        // Map persistent fields back to builder state
+        const savedParams = { ...builder.params }
+        let hasUpdates = false
+        
+        if (draft.productName) { savedParams.productName = draft.productName; hasUpdates = true }
+        if (draft.brand) { savedParams.brandName = draft.brand; hasUpdates = true }
+        if (draft.targetAudience) { savedParams.targetAudience = draft.targetAudience; hasUpdates = true }
+        if (draft.tone) { savedParams.tone = draft.tone; hasUpdates = true }
+        if (Array.isArray(draft.features)) { savedParams.characteristicTags = draft.features; hasUpdates = true }
+        if (Array.isArray(draft.avoidWords)) { savedParams.avoidWords = draft.avoidWords.join(', '); hasUpdates = true }
+        
+        // Backward compatibility with old params object if exists
         if (draft.params) {
-          builder.setParams(draft.params);
+             builder.setParams({ ...savedParams, ...draft.params })
+        } else if (hasUpdates) {
+             builder.setParams(savedParams)
         }
 
         // Load keywords into builder
@@ -112,6 +128,19 @@ function ListingBuilderContent() {
       setFinishing(false);
     }
   }
+
+  // Get selected keywords for highlighting
+  const selectedKeywordPhrases = useMemo(
+    () => builder.keywords.filter((k) => k.selected).map((k) => k.phrase),
+    [builder.keywords]
+  );
+
+  // Get all keywords for autocomplete (phrases only or all?)
+  // User said "anything from keyword bank".
+  const allKeywordPhrases = useMemo(
+    () => builder.keywords.map((k) => k.phrase),
+    [builder.keywords]
+  );
 
   return (
     <div className="space-y-6">
@@ -203,20 +232,13 @@ function ListingBuilderContent() {
                 ).length
               }
               canGenerate={builder.canGenerate}
-              generate={() =>
-                builder.generateContentMutation.mutate({ section: "title" })
-              }
-              generating={
-                builder.generateContentMutation.isPending &&
-                builder.pendingSuggestion?.section === "title"
-              }
-              pendingSuggestion={
-                builder.pendingSuggestion?.section === "title"
-                  ? builder.pendingSuggestion.content
-                  : null
-              }
-              applySuggestion={builder.applySuggestion}
-              discardSuggestion={builder.discardSuggestion}
+              generate={() => builder.requestAIGeneration("title")}
+              generating={builder.generatingSection === "title"}
+              pendingSuggestion={builder.titleSuggestion}
+              applySuggestion={() => builder.applySuggestion()}
+              discardSuggestion={() => builder.discardSuggestion()}
+              selectedKeywords={selectedKeywordPhrases}
+              allKeywords={allKeywordPhrases}
             />
             <BulletsEditor
               bullets={[
@@ -238,20 +260,13 @@ function ListingBuilderContent() {
               }
               limit={builder.limits.bulletLimit}
               canGenerate={builder.canGenerate}
-              generate={() =>
-                builder.generateContentMutation.mutate({ section: "bullets" })
-              }
-              generating={
-                builder.generateContentMutation.isPending &&
-                builder.pendingSuggestion?.section === "bullet"
-              }
-              pendingSuggestion={
-                builder.pendingSuggestion?.section === "bullet"
-                  ? builder.pendingSuggestion.content
-                  : null
-              }
-              applySuggestion={builder.applySuggestion}
-              discardSuggestion={builder.discardSuggestion}
+              generate={() => builder.requestAIGeneration("bullets")}
+              generating={builder.generatingSection === "bullets"}
+              bulletSuggestions={builder.bulletSuggestions}
+              applySuggestion={(bulletIndex) => builder.applySuggestion(bulletIndex)}
+              discardSuggestion={(bulletIndex) => builder.discardSuggestion(bulletIndex)}
+              selectedKeywords={selectedKeywordPhrases}
+              allKeywords={allKeywordPhrases}
             />
             <DescriptionEditor
               value={builder.content.description}
@@ -260,22 +275,19 @@ function ListingBuilderContent() {
               }
               limit={builder.limits.descLimit}
               canGenerate={builder.canGenerate}
-              generate={() =>
-                builder.generateContentMutation.mutate({
-                  section: "description",
-                })
+              generate={() => builder.requestAIGeneration("description")}
+              generating={builder.generatingSection === "description"}
+              pendingSuggestion={builder.descriptionSuggestion}
+              applySuggestion={() => builder.applySuggestion()}
+              discardSuggestion={() => builder.discardSuggestion()}
+              selectedKeywords={selectedKeywordPhrases}
+              allKeywords={allKeywordPhrases}
+            />
+            <SearchTermsEditor
+              value={builder.content.searchTerms}
+              onChange={(v) =>
+                builder.setContent((c) => ({ ...c, searchTerms: v }))
               }
-              generating={
-                builder.generateContentMutation.isPending &&
-                builder.pendingSuggestion?.section === "description"
-              }
-              pendingSuggestion={
-                builder.pendingSuggestion?.section === "description"
-                  ? builder.pendingSuggestion.content
-                  : null
-              }
-              applySuggestion={builder.applySuggestion}
-              discardSuggestion={builder.discardSuggestion}
             />
           </div>
         </div>
@@ -286,6 +298,11 @@ function ListingBuilderContent() {
         bulkText={builder.bulkKeywordText}
         setBulkText={builder.setBulkKeywordText}
         onAdd={(phrases) => phrases.forEach((p) => builder.addManualKeyword(p))}
+      />
+      <AIDisclaimerDialog
+        open={builder.aiDisclaimerOpen}
+        onOpenChange={builder.setAiDisclaimerOpen}
+        onAccept={builder.handleAIDisclaimerAccept}
       />
       {/* Inline AI suggestion UI will be handled in editors */}
     </div>

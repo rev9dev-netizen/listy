@@ -19,6 +19,7 @@ model User {
   ingests      Ingest[]
   keywords     Keyword[]
   drafts       Draft[]
+  templates    ListingTemplate[]
   constraints  Constraint[]
   PpcCampaigns PpcCampaign[] @relation("PpcCampaigns")
 
@@ -91,15 +92,62 @@ model Draft {
   backendTerms String?  @db.Text
   keywords     Json?    @default("[]") // Array of UIKeyword objects from Cerebro
   finalized    Boolean  @default(true) // true = immutable snapshot, false = active editing draft
-  contentHash  String?  // sha256 of normalized content+keywords for dedupe
-  version      Int      @default(1)
-  score        Int      @default(0)
-  marketplace  String   @default("US")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  contentHash    String?  // sha256 of normalized content+keywords for dedupe
+  version        Int      @default(1)
+  score          Int      @default(0)
+  marketplace    String   @default("US")
+  
+  // AI Parameters Persistence
+  productName    String?
+  brand          String?
+  targetAudience String?
+  tone           String   @default("professional")
+  features       String[] // Product characteristics
+  avoidWords     String[]
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([userId])
   @@map("drafts")
+}
+
+model ListingTemplate {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?  @db.Text
+ isDefault   Boolean  @default(false)
+  
+  // Title rules
+  titleMinChars       Int     @default(150)
+  titleMaxChars       Int     @default(200)
+  titleRequireKeyword Boolean @default(true)
+  titleCapitalization String  @default("title") // sentence, title, all-caps, none
+  
+  // Bullet rules
+  bulletMinChars       Int     @default(180)
+  bulletMaxChars       Int     @default(220)
+  bulletCapitalizeFirst Boolean @default(true)
+  bulletFormat         String  @default("benefit-feature") // benefit-feature, feature-only, descriptive
+  
+  // Description rules
+  descriptionMinChars Int     @default(1500)
+  descriptionMaxChars Int     @default(2000)
+  useHtmlFormatting   Boolean @default(true)
+  
+  // General writing rules
+  avoidWords      String[] // User-specific words to avoid
+  tone            String   @default("professional") // formal, casual, professional, luxury, friendly
+  includeEmojis   Boolean  @default(false)
+  keywordDensity  String   @default("medium") // low, medium, high
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId])
+  @@map("listing_templates")
 }
 
 model Constraint {

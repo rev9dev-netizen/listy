@@ -40,9 +40,45 @@ export interface ListingTemplate {
         bulletDensity: 'high' | 'medium' | 'low';
         descriptionDensity: 'high' | 'medium' | 'low';
     };
+    // Optional configuration overrides
+    titleMinChars?: number;
+    titleMaxChars?: number;
+    titleCapitalization?: string;
+    bulletMinChars?: number;
+    bulletMaxChars?: number;
+    bulletCapitalizeFirst?: boolean;
+    descriptionMinChars?: number;
+    descriptionMaxChars?: number;
+    useHtmlFormatting?: boolean;
+    descriptionStyle?: 'paragraph' | 'structured'; 
+    tone?: string;
+    avoidWords?: string[];
 }
 
 export const LISTING_TEMPLATES: ListingTemplate[] = [
+    {
+        id: 'killer-copywriter',
+        name: 'Killer Copywriter (High Impact)',
+        description: 'Persuasive, catchy, and "sexy" copy. One-paragraph description. Best for high-converting sales.',
+        titleFormat: '[Brand] [Benefit/Hook] - [Benefit] - [Benefit] - [Size/Color]',
+        bulletFormat: 'BENEFIT IN CAPS - Feature that supports benefit',
+        descriptionFormat: 'Single paragraph essay: Hook -> Story -> Benefits -> Confidence -> Sizzle',
+        keywords: {
+            titleDensity: 'high',
+            bulletDensity: 'high',
+            descriptionDensity: 'medium',
+        },
+        tone: 'catchy, fun, confident, and sexy (avoid corporate jargon)',
+        titleMinChars: 150,
+        titleMaxChars: 200, // User requested ~160 but flexible up to 200
+        titleCapitalization: 'Title Case',
+        bulletMinChars: 180,
+        bulletMaxChars: 220, // Strict range per user
+        descriptionMinChars: 2000,
+        descriptionMaxChars: 3000,
+        useHtmlFormatting: true,
+        descriptionStyle: 'paragraph'
+    },
     {
         id: 'professional-seo',
         name: 'Professional SEO Optimized',

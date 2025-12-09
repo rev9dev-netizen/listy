@@ -1,11 +1,11 @@
 "use client";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { SparklesIcon } from "lucide-react";
 import { getCharCountColor } from "../_utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HighlightedTextarea } from "./HighlightedTextarea";
 
 interface Props {
   bullets: string[];
@@ -14,9 +14,11 @@ interface Props {
   canGenerate: boolean;
   generate: () => void;
   generating: boolean;
-  pendingSuggestion?: string | null;
-  applySuggestion?: () => void;
-  discardSuggestion?: () => void;
+  bulletSuggestions?: (string | null)[];
+  applySuggestion?: (bulletIndex: number) => void;
+  discardSuggestion?: (bulletIndex: number) => void;
+  selectedKeywords?: string[];
+  allKeywords?: string[];
 }
 
 export function BulletsEditor({
@@ -26,9 +28,11 @@ export function BulletsEditor({
   canGenerate,
   generate,
   generating,
-  pendingSuggestion,
+  bulletSuggestions = [null, null, null, null, null],
   applySuggestion,
   discardSuggestion,
+  selectedKeywords = [],
+  allKeywords = [],
 }: Props) {
   return (
     <Card>
@@ -58,30 +62,39 @@ export function BulletsEditor({
                 {value.length}/{limit} characters
               </p>
             </div>
-            <Textarea
+            <HighlightedTextarea
               rows={2}
               value={value}
               onChange={(e) => onChange(index, e.target.value)}
               placeholder="Start typing content here"
+              keywords={selectedKeywords}
+              allKeywords={allKeywords}
             />
-            {/* Show skeleton under each bullet when generating */}
+            {/* Show skeleton when generating */}
             {generating && <Skeleton className="h-10 w-full mt-2" />}
+            {/* Show suggestion for this specific bullet */}
+            {bulletSuggestions[index] && (
+              <div className="bg-muted p-3 rounded mt-2">
+                <div className="text-sm">{bulletSuggestions[index]}</div>
+                <div className="flex gap-2 mt-2 justify-end">
+                  <Button
+                    size="sm"
+                    onClick={() => applySuggestion && applySuggestion(index)}
+                  >
+                    Use suggestion
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => discardSuggestion && discardSuggestion(index)}
+                  >
+                    Discard
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
-        {/* Suggestion box, only if pendingSuggestion exists */}
-        {pendingSuggestion && (
-          <div className="bg-muted p-2 rounded mt-2">
-            <div>{pendingSuggestion}</div>
-            <div className="flex gap-2 mt-2 justify-end">
-              <Button size="sm" onClick={applySuggestion}>
-                Use suggestion
-              </Button>
-              <Button size="sm" variant="outline" onClick={discardSuggestion}>
-                Discard
-              </Button>
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

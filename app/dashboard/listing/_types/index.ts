@@ -26,6 +26,7 @@ export interface ListingParameters {
     tone: 'formal' | 'casual' | 'professional' | 'luxury'
     targetAudience: string
     avoidWords: string
+    selectedTemplateId?: string
 }
 
 export interface ListingContent {
@@ -36,6 +37,7 @@ export interface ListingContent {
     bullet4: string
     bullet5: string
     description: string
+    searchTerms: string
 }
 
 export interface ListingLimits {

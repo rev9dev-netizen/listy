@@ -22,6 +22,9 @@ import {
 } from "@/components/ui/select";
 import { SparklesIcon, ChevronDownIcon, XIcon } from "lucide-react";
 import type { ListingParameters } from "../_types";
+import { useState, useEffect } from "react";
+import { TemplateDialog } from "./TemplateDialog";
+import { toast } from "sonner";
 
 interface Props {
   open: boolean;
@@ -31,6 +34,53 @@ interface Props {
 }
 
 export function AIParameters({ open, onOpenChange, params, setParams }: Props) {
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  
+  // Load templates on mount
+  useEffect(() => {
+    if (open) {
+      loadTemplates();
+    }
+  }, [open]);
+  
+  async function loadTemplates() {
+    try {
+      setLoadingTemplates(true);
+      const res = await fetch('/api/listing/templates');
+      const data = await res.json();
+      setTemplates(data.templates || []);
+    } catch (error) {
+      console.error('Failed to load templates:', error);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }
+  
+  async function handleSaveTemplate(templateData: any) {
+    try {
+      const res = await fetch('/api/listing/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...templateData,
+          avoidWords: templateData.avoidWords.split(',').map((w: string) => w.trim()).filter(Boolean),
+        }),
+      });
+      
+      if (!res.ok) throw new Error('Failed to save template');
+      
+      const { template } = await res.json();
+      toast.success('Template created successfully');
+      await loadTemplates(); // Reload templates
+      setField('selectedTemplateId', template.id); // Select the new template
+    } catch (error) {
+      console.error('Error saving template:', error);
+      toast.error('Failed to save template');
+    }
+  }
+  
   const setField = <K extends keyof ListingParameters>(
     key: K,
     value: ListingParameters[K]
@@ -95,6 +145,37 @@ export function AIParameters({ open, onOpenChange, params, setParams }: Props) {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="space-y-3 pt-0">
+            {/* Template Selector */}
+            <div className="space-y-2 pb-3 border-b">
+              <Label className="font-medium text-sm">Writing Template</Label>
+              <div className="flex gap-2">
+                <Select
+                  value={params.selectedTemplateId || 'professional-seo'}
+                  onValueChange={(v) => {
+                    if (v === '__create__') {
+                      setTemplateDialogOpen(true);
+                    } else {
+                      setField('selectedTemplateId', v);
+                    }
+                  }}
+                  disabled={loadingTemplates}
+                >
+                  <SelectTrigger className="h-9 flex-1">
+                    <SelectValue placeholder={loadingTemplates ? "Loading..." : "Select template"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__create__" className="font-medium text-primary">
+                      + Create New Template
+                    </SelectItem>
+                    {templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name} {template.isSystem && '(Built-in)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="grid gap-3 grid-cols-1 lg:grid-cols-[200px_1fr]">
               <div className="space-y-2">
                 <Label className="font-medium text-sm">Brand Name</Label>
@@ -240,6 +321,12 @@ export function AIParameters({ open, onOpenChange, params, setParams }: Props) {
           </CardContent>
         </CollapsibleContent>
       </Card>
+      
+      <TemplateDialog
+        open={templateDialogOpen}
+        onOpenChange={setTemplateDialogOpen}
+        onSave={handleSaveTemplate}
+      />
     </Collapsible>
   );
 }

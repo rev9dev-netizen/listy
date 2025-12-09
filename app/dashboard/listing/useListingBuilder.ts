@@ -25,6 +25,9 @@ export function useListingBuilder() {
     const [rootWordFilter, setRootWordFilter] = useState<'1' | '2' | '3+'>('1')
     const [isUploading, setIsUploading] = useState(false)
     const [isAiFiltering, setIsAiFiltering] = useState(false)
+    const [aiDisclaimerOpen, setAiDisclaimerOpen] = useState(false)
+    const [pendingAISection, setPendingAISection] = useState<'title' | 'bullets' | 'description' | null>(null)
+
 
     // Parameters
     const [params, setParams] = useState<ListingParameters>({
@@ -41,7 +44,7 @@ export function useListingBuilder() {
 
     // Content
     const [content, setContent] = useState<ListingContent>({
-        title: '', bullet1: '', bullet2: '', bullet3: '', bullet4: '', bullet5: '', description: ''
+        title: '', bullet1: '', bullet2: '', bullet3: '', bullet4: '', bullet5: '', description: '', searchTerms: ''
     })
 
     // // Suggestion dialog
@@ -144,11 +147,15 @@ export function useListingBuilder() {
         toast.success('Keywords exported successfully!')
     }
 
-    // Track pending suggestion for each section
-    const [pendingSuggestion, setPendingSuggestion] = useState<{ content: string, section: string } | null>(null);
+    // Track pending suggestions for each section separately
+    const [titleSuggestion, setTitleSuggestion] = useState<string | null>(null);
+    const [bulletSuggestions, setBulletSuggestions] = useState<(string | null)[]>([null, null, null, null, null]);
+    const [descriptionSuggestion, setDescriptionSuggestion] = useState<string | null>(null);
+    const [generatingSection, setGeneratingSection] = useState<'title' | 'bullets' | 'description' | null>(null);
 
     const generateContentMutation = useMutation({
         mutationFn: async (data: { section: 'title' | 'bullets' | 'description' }) => {
+            setGeneratingSection(data.section);
             // Use all keywords for generation
             if (keywords.length === 0) throw new Error('Please add keywords first');
             if (!params.productCharacteristics.trim()) throw new Error('Please fill in product characteristics');
@@ -164,7 +171,7 @@ export function useListingBuilder() {
                     features: params.characteristicTags,
                     targetAudience: params.targetAudience,
                     marketplace: 'US',
-                    templateId: 'professional-seo',
+                    templateId: params.selectedTemplateId || 'professional-seo',
                     section: data.section // Pass the specific section to generate
                 })
             })
@@ -177,38 +184,66 @@ export function useListingBuilder() {
             return { ...(await response.json()), section: data.section }
         },
         onSuccess: (data) => {
-            // Store suggestion until user applies/discards
+            setGeneratingSection(null);
+            // Store suggestions by section type
             if (data.section === 'title') {
-                setPendingSuggestion({ content: data.title, section: 'title' });
+                setTitleSuggestion(data.title);
             } else if (data.section === 'bullets') {
-                setPendingSuggestion({ content: data.bullets.join('\n\n'), section: 'bullet' });
+                // Split bullets into individual suggestions
+                const bullets = Array.isArray(data.bullets) ? data.bullets : [];
+                setBulletSuggestions([
+                    bullets[0] || null,
+                    bullets[1] || null,
+                    bullets[2] || null,
+                    bullets[3] || null,
+                    bullets[4] || null,
+                ]);
             } else if (data.section === 'description') {
-                setPendingSuggestion({ content: data.description, section: 'description' });
+                setDescriptionSuggestion(data.description);
             }
             toast.success('Content generated successfully!');
         },
-        onError: (e: Error) => toast.error(e.message)
+        onError: (e: Error) => {
+            setGeneratingSection(null);
+            toast.error(e.message);
+        }
     });
 
-    // Apply suggestion and clear pending
-    function applySuggestion() {
-        if (!pendingSuggestion) return;
-        if (pendingSuggestion.section === 'title') {
-            setContent(c => ({ ...c, title: pendingSuggestion.content }));
-        } else if (pendingSuggestion.section === 'bullet') {
-            const bullets = pendingSuggestion.content.split('\n\n');
-            setContent(c => ({ ...c, bullet1: bullets[0] || '', bullet2: bullets[1] || '', bullet3: bullets[2] || '', bullet4: bullets[3] || '', bullet5: bullets[4] || '' }));
-        } else if (pendingSuggestion.section === 'description') {
-            setContent(c => ({ ...c, description: pendingSuggestion.content }));
+    // Apply suggestions with optional bullet index
+    function applySuggestion(bulletIndex?: number) {
+        if (bulletIndex !== undefined && bulletSuggestions[bulletIndex]) {
+            // Apply specific bullet suggestion
+            const suggestion = bulletSuggestions[bulletIndex];
+            const bulletKeys = ['bullet1', 'bullet2', 'bullet3', 'bullet4', 'bullet5'] as const;
+            setContent(c => ({ ...c, [bulletKeys[bulletIndex]]: suggestion! }));
+            
+            // Clear only this bullet's suggestion
+            setBulletSuggestions(prev => prev.map((s, i) => i === bulletIndex ? null : s));
+            toast.success('Suggestion applied!');
+        } else if (titleSuggestion) {
+            // Apply title suggestion
+            setContent(c => ({ ...c, title: titleSuggestion }));
+            setTitleSuggestion(null);
+            toast.success('Title suggestion applied!');
+        } else if (descriptionSuggestion) {
+            // Apply description suggestion
+            setContent(c => ({ ...c, description: descriptionSuggestion }));
+            setDescriptionSuggestion(null);
+            toast.success('Description suggestion applied!');
         }
-        setPendingSuggestion(null);
         updateScore();
-        toast.success('Suggestion applied!');
     }
 
-    // Discard suggestion
-    function discardSuggestion() {
-        setPendingSuggestion(null);
+    // Discard suggestions with optional bullet index
+    function discardSuggestion(bulletIndex?: number) {
+        if (bulletIndex !== undefined) {
+            // Discard specific bullet suggestion
+            setBulletSuggestions(prev => prev.map((s, i) => i === bulletIndex ? null : s));
+        } else {
+            // Discard title or description suggestion based on what's active
+            setTitleSuggestion(null);
+            setDescriptionSuggestion(null);
+        }
     }
 
     // function regenerateSuggestion() {
@@ -238,7 +273,13 @@ export function useListingBuilder() {
                     bullets: [content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5],
                     description: content.description,
                     keywords: keywords,
-                    params: params // Save AI parameters
+                    // Persist AI parameters
+                    productName: params.productName,
+                    brand: params.brandName,
+                    targetAudience: params.targetAudience,
+                    tone: params.tone,
+                    features: params.characteristicTags,
+                    avoidWords: params.avoidWords ? params.avoidWords.split(',').map(s => s.trim()).filter(Boolean) : []
                 }
                 console.log('Autosave payload:', payload)
                 const res = await fetch(`/api/listing/draft?id=${draftId}`, {
@@ -267,10 +308,15 @@ export function useListingBuilder() {
     useEffect(() => {
         if (keywords.length === 0) return;
         const text = [content.title, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5, content.description].join(' ').toLowerCase();
-        const updated = keywords.map(k => ({
-            ...k,
-            selected: text.includes(k.phrase.toLowerCase())
-        }));
+        const updated = keywords.map(k => {
+            // Auto-select ONLY if it's a phrase (more than 1 word)
+            const isPhrase = k.phrase.trim().split(/\s+/).length > 1;
+            if (isPhrase) {
+                return { ...k, selected: text.includes(k.phrase.toLowerCase()) };
+            }
+            // For single words, keep existing manual selection state
+            return k;
+        });
         // If no keywords are selected, select the first one
         if (!updated.some(k => k.selected) && updated.length > 0) {
             updated[0].selected = true;
@@ -282,19 +328,36 @@ export function useListingBuilder() {
         }
     }, [content.title, content.bullet1, content.bullet2, content.bullet3, content.bullet4, content.bullet5, content.description, keywords, keywords.length]);
 
+    // Helper to request AI generation (shows disclaimer first)
+    function requestAIGeneration(section: 'title' | 'bullets' | 'description') {
+        setPendingAISection(section);
+        setAiDisclaimerOpen(true);
+    }
+
+    // Handle disclaimer acceptance
+    function handleAIDisclaimerAccept() {
+        if (pendingAISection) {
+            generateContentMutation.mutate({ section: pendingAISection });
+            setPendingAISection(null);
+        }
+    }
+
     return {
         // state
         keywords, manualKeyword, bulkKeywordText, sortBy, currentPage, keywordsPerPage,
         keywordBankOpen, rootKeywordsOpen, parametersOpen, manualKeywordDialog, addKeywordsDialog, emptyStateAddOpen,
         rootWordFilter, isUploading, isAiFiltering, params, content, metrics, limits, canGenerate, saving, lastSavedAt,
-        pendingSuggestion,
+        titleSuggestion, bulletSuggestions, descriptionSuggestion, generatingSection,
+        aiDisclaimerOpen, pendingAISection,
         // setters
         setManualKeyword, setBulkKeywordText, setSortBy, setCurrentPage, setKeywordBankOpen,
         setRootKeywordsOpen, setParametersOpen, setManualKeywordDialog, setAddKeywordsDialog, setEmptyStateAddOpen,
         setRootWordFilter, setIsAiFiltering, setParams, setContent, setKeywords,
+        setAiDisclaimerOpen,
         // actions
         handleFileUpload, addManualKeyword, toggleKeyword, updateScore, exportKeywords,
         applySuggestion, discardSuggestion,
+        requestAIGeneration, handleAIDisclaimerAccept,
         // mutation
         generateContentMutation
     }
