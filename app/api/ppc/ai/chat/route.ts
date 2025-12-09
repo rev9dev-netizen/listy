@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { ppcChatAssistant } from "@/lib/services/ppc-ai-engine";
@@ -42,22 +43,22 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        const totalSpend = campaigns.reduce((sum: number, c) => {
-            return sum + c.metrics.reduce((s: number, m) => s + m.spend, 0);
+        const totalSpend = campaigns.reduce((sum: number, c: typeof campaigns[0]) => {
+            return sum + c.metrics.reduce((s: number, m: typeof c.metrics[0]) => s + m.spend, 0);
         }, 0);
 
         const avgAcos =
-            campaigns.reduce((sum: number, c) => {
+            campaigns.reduce((sum: number, c: typeof campaigns[0]) => {
                 const campaignAcos =
-                    c.metrics.reduce((s: number, m) => s + m.acos, 0) /
+                    c.metrics.reduce((s: number, m: typeof c.metrics[0]) => s + m.acos, 0) /
                     Math.max(c.metrics.length, 1);
                 return sum + campaignAcos;
             }, 0) / Math.max(campaigns.length, 1);
 
         const topKeywords = campaigns
-            .flatMap((c) => c.adGroups.flatMap((ag) => ag.keywords))
+            .flatMap((c: typeof campaigns[0]) => c.adGroups.flatMap((ag: typeof c.adGroups[0]) => ag.keywords))
             .slice(0, 10)
-            .map((k) => k.keyword);
+            .map((k: any) => k.keyword);
 
         const context = {
             campaigns: campaigns.length,
