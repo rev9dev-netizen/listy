@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
         })
 
         return NextResponse.json({
-            versions: drafts.map(d => ({
+            versions: drafts.map((d: typeof drafts[0]) => ({
                 id: d.id,
                 version: d.version,
                 title: d.title,
